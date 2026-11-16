@@ -44,6 +44,15 @@ class TestServer(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["status"], "ok")
 
+    def test_web_ui_served(self):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/") as r:
+            body = r.read().decode("utf-8")
+            self.assertEqual(r.status, 200)
+            self.assertIn("text/html", r.headers.get("Content-Type", ""))
+            self.assertIn("Scalper", body)
+            self.assertIn("/run", body)
+            self.assertIn("/check-source", body)
+
     def test_check_source_demo_allowed(self):
         status, body = self._get("/check-source?source=demo")
         self.assertEqual(status, 200)

@@ -73,7 +73,7 @@ CI GitHub Actions (lint + tests) sur chaque PR — voir `.github/workflows/ci.ym
 
 ```bash
 cp .env.example .env       # MISTRAL_API_KEY (jamais committer)
-docker compose up -d       # sert http://localhost:8000 (GET /healthz, GET /check-source, POST /run)
+docker compose up -d       # API sur http://localhost:8000 + interface web sur http://localhost:8000/
 ```
 
 Déploiement pas à pas sur Coolify : [docs/deploy-coolify.md](docs/deploy-coolify.md).

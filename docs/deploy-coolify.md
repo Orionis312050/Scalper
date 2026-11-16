@@ -31,6 +31,7 @@ Les résultats sont écrits dans le volume `./out` (monté dans le compose).
 ## Endpoints
 | Méthode | Chemin | Rôle |
 |---|---|---|
+| GET | `/` | **interface web** (formulaires check-source + run) |
 | GET | `/healthz` | sonde de santé |
 | GET | `/check-source?source=...` | verdict légal (allowed/blocked) |
 | POST | `/run` | pipeline complet (check → scrape → clean → translate → QA → export) |

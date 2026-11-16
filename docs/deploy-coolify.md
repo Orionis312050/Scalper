@@ -7,9 +7,15 @@ cp .env.example .env        # renseigne MISTRAL_API_KEY (jamais committer .env)
 
 ## 2. Créer la ressource Coolify
 1. Coolify → **New Resource** → **Docker Compose** → sélectionne le repo `Orionis312050/Scalper`.
-2. Coolify détecte `docker-compose.yml` (service `scalper`, port **8000**).
+2. Coolify détecte `docker-compose.yml` (service `scalper`, port conteneur **8000**, publié sur le port hôte `SCALPER_HOST_PORT`, défaut **8000**).
 3. Dans l'onglet **Environment**, ajoute `MISTRAL_API_KEY` (secret).
 4. Déploie, puis attache un domaine. Coolify gère le reverse proxy HTTPS.
+
+> **Port déjà occupé** (`Bind for 0.0.0.0:8000 failed: port is already allocated`) :
+> un autre service du serveur utilise déjà le port hôte 8000. Soit tu libères le port
+> (`sudo ss -ltnp | grep :8000` puis stoppe le conteneur/service concerné), soit tu ajoutes
+> `SCALPER_HOST_PORT=<port libre>` (ex. `8001`) dans l'onglet **Environment** de la ressource
+> et tu redéploies — le port conteneur reste 8000 en interne.
 
 ## 3. Vérifier
 ```bash

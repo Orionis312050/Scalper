@@ -2,12 +2,16 @@
 #
 # 1) cp .env.example .env  et renseigne MISTRAL_API_KEY (jamais committer .env)
 # 2) docker compose up -d    (ou déploiement Coolify)
+#
+# Port hôte publié : SCALPER_HOST_PORT (défaut 8000). Le conteneur écoute toujours
+# en interne sur 8000. Si le port hôte est déjà occupé sur le serveur
+# ("Bind for 0.0.0.0:8000 failed: port is already allocated"), change SCALPER_HOST_PORT.
 services:
   scalper:
     build: .
     container_name: scalper
     ports:
-      - "8000:8000"
+      - "8426:8000"
     env_file:
       - .env
     environment:

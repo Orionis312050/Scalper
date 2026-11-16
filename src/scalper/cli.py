@@ -95,7 +95,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", default="out")
     c.add_argument("--max-chapters", type=int, default=None)
     c.add_argument("--mock-llm", action="store_true", help="démo hors ligne (LLM factice)")
-    c.add_argument("--with-ocr", action="store_true", help="OCR + remplacement du texte dans les images")
+    c.add_argument("--with-ocr", action=argparse.BooleanOptionalAction, default=True,
+                   help="OCR + remplacement du texte dans les images (auto si images présentes ; --no-ocr pour désactiver)")
     c.add_argument("--force", action="store_true", help="exporte même si la QA échoue (bypass vérification)")
 
     args = p.parse_args(argv)

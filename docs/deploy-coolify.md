@@ -33,9 +33,12 @@ Les résultats sont écrits dans le volume `./out` (monté dans le compose).
 ## Endpoints
 | Méthode | Chemin | Rôle |
 |---|---|---|
-| GET | `/` | **interface web** (formulaire run) |
+| GET | `/` | **interface web** : formulaire run + barre de progression + previews (chapitre récupéré / traduit complet) |
 | GET | `/healthz` | sonde de santé |
-| POST | `/run` | pipeline complet (scrape → clean → translate → QA → export). Champ optionnel `"force": true` : exporte même si la QA échoue (les chapitres concernés sont marqués `"forced": true`) |
+| POST | `/run` | pipeline complet (scrape → clean → translate → QA → export, + OCR/typeset auto des images). Options : `"force": true` (exporte même si la QA échoue, chapitres marqués `"forced": true`), `"with_ocr": false` (désactive l'OCR/typeset, actif par défaut), `"background": true` → répond `202 {"job": id}` et le run tourne en thread |
+| GET | `/jobs/<id>` | progression du job background `{status, progress: {done, total, current}, result, error}` |
+| GET | `/api/chapter?out=&source=&series=&chapter=&lang=` | données de preview : meta, blocs source (`chapter.json`) et traduits (`chapter.<lang>.json`), images, images traduites |
+| GET | `/file?out=&path=` | sert un fichier sous `out` (images, exports), anti path-traversal |
 
 ## Sécurité
 - Rate limiting ≥ 1 s entre requêtes vers les sources.

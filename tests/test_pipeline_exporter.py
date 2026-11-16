@@ -40,6 +40,16 @@ class TestPipeline(unittest.TestCase):
             raw1 = Path(tmp) / "raw" / "demo" / "demo-1" / "demo-1-ch1"
             self.assertFalse((raw1 / "export").exists())
 
+    def test_on_progress_callback(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline.run_pipeline(
+                "demo", "demo-1", "fr", out_root=tmp, mock_llm=True,
+                on_progress=lambda done, total, ref: calls.append((done, total, ref.id)),
+            )
+        self.assertEqual([(d, t) for d, t, _ in calls], [(1, 2), (2, 2)])
+        self.assertEqual(calls[-1][2], "demo-1-ch2")
+
     def test_force_exports_despite_qa_failure(self):
         fake = {"score": 10, "pass": False, "issues": [{"type": "x", "critical": True}]}
         with tempfile.TemporaryDirectory() as tmp:

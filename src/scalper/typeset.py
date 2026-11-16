@@ -39,22 +39,60 @@ def wrap_text(draw, text: str, font, max_width: int) -> list[str]:
     return lines or [""]
 
 
-def _inpaint(img, box: list[int]) -> None:
-    """Approximation d'inpainting : remplissage par la couleur moyenne locale floutée."""
-    from PIL import ImageFilter
+def _inpaint(img, box: list[int]) -> tuple[int, int, int]:
+    """Inpainting : la boîte est remplie par la couleur de fond estimée sur l'anneau
+    de pixels juste autour de la boîte (donc hors du texte), et non par la moyenne de
+    la boîte elle-même (qui serait assombrie par le texte). Retourne la couleur RGB
+    de remplissage. Repli : moyenne de la boîte si l'anneau est vide (bord d'image)."""
+    from PIL import Image
 
     x, y, w, h = box
     x, y = max(0, x), max(0, y)
-    w, h = max(1, w), max(1, h)
-    patch = img.crop((x, y, x + w, y + h)).resize((1, 1)).resize((w, h))
-    patch = patch.filter(ImageFilter.GaussianBlur(radius=max(1, min(w, h) // 10)))
-    img.paste(patch, (x, y))
+    w, h = min(max(1, w), img.width - x), min(max(1, h), img.height - y)
+    if w <= 0 or h <= 0:
+        return (255, 255, 255)
+    margin = max(2, min(w, h) // 8)
+    rx0, ry0 = max(0, x - margin), max(0, y - margin)
+    rx1, ry1 = min(img.width, x + w + margin), min(img.height, y + h + margin)
+    ring = img.crop((rx0, ry0, rx1, ry1))
+    rw, rh = ring.size
+    if rw > 2 and rh > 2:
+        px = ring.load()
+        samples = []
+        step = max(1, (rw + rh) // 400)
+        for i in range(0, rw, step):
+            samples.append(px[i, 0])
+            samples.append(px[i, rh - 1])
+        for j in range(0, rh, step):
+            samples.append(px[0, j])
+            samples.append(px[rw - 1, j])
+        n = len(samples)
+        fill_rgb = (
+            sum(p[0] for p in samples) // n,
+            sum(p[1] for p in samples) // n,
+            sum(p[2] for p in samples) // n,
+        )
+    else:
+        fill_rgb = img.crop((x, y, x + w, y + h)).resize((1, 1)).getpixel((0, 0))[:3]
+    img.paste(Image.new("RGB", (w, h), fill_rgb), (x, y))
+    return fill_rgb
+
+
+def _text_colors(fill_rgb: tuple[int, int, int]) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """Couleur de texte + contour contrastées avec le fond (luminance)."""
+    lum = 0.299 * fill_rgb[0] + 0.587 * fill_rgb[1] + 0.114 * fill_rgb[2]
+    if lum > 140:
+        return (0, 0, 0), (255, 255, 255)
+    return (255, 255, 255), (0, 0, 0)
 
 
 def replace_texts(image_path: Path, regions: list[dict[str, Any]], translations: list[str], out_path: Path) -> Path:
     """Remplace le texte des `regions` (index → translations[index]) dans l'image."""
     from PIL import Image, ImageDraw
 
+    # Les pages manga peuvent être très grandes : on désactive la limite
+    # anti-decompression-bomb de PIL (les images viennent de nos propres chapitres).
+    Image.MAX_IMAGE_PIXELS = None
     img = Image.open(image_path).convert("RGB")
     for r in regions:
         i = r.get("index")
@@ -64,7 +102,8 @@ def replace_texts(image_path: Path, regions: list[dict[str, Any]], translations:
         if not text or text == r.get("text", "").strip():
             continue
         x, y, w, h = r["box"]
-        _inpaint(img, [x, y, w, h])
+        fill_rgb = _inpaint(img, [x, y, w, h])
+        text_fill, stroke_fill = _text_colors(fill_rgb)
         draw = ImageDraw.Draw(img)
         font_size = max(10, int(h * 0.8))
         font = _load_font(font_size)
@@ -78,20 +117,25 @@ def replace_texts(image_path: Path, regions: list[dict[str, Any]], translations:
         for ln in lines:
             tw = draw.textlength(ln, font=font)
             tx = x + max(0, int((w - tw) // 2))
-            draw.text((tx, ty), ln, font=font, fill=(255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0))
+            draw.text((tx, ty), ln, font=font, fill=text_fill, stroke_width=1, stroke_fill=stroke_fill)
             ty += line_h
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(out_path)
     return out_path
 
 
-def typeset_chapter(chapter_dir: Path, lang: str, ocr_file: str = "ocr.json") -> list[str]:
-    """Recrée les images avec le texte traduit → `export/images-<lang>/`."""
-    from .models import Chapter
+def typeset_chapter(chapter_dir: Path, lang: str, ocr_file: str = "ocr.json", translations: list[str] | None = None) -> list[str]:
+    """Recrée les images avec le texte traduit → `export/images-<lang>/`.
 
+    Si `translations` est fourni (une traduction par région OCR, dans l'ordre), il est
+    utilisé directement ; sinon les blocs texte de `chapter.<lang>.json` servent de
+    traductions (indexés par ordre des régions)."""
     ocr = json.loads((chapter_dir / ocr_file).read_text(encoding="utf-8"))
-    chapter = Chapter.from_dict(json.loads((chapter_dir / f"chapter.{lang}.json").read_text(encoding="utf-8")))
-    translations = [b.text for b in chapter.text_blocks()]
+    if translations is None:
+        from .models import Chapter
+
+        chapter = Chapter.from_dict(json.loads((chapter_dir / f"chapter.{lang}.json").read_text(encoding="utf-8")))
+        translations = [b.text for b in chapter.text_blocks()]
     images_dir = chapter_dir / "images"
     out_dir = chapter_dir / "export" / f"images-{lang}"
     outputs: list[str] = []

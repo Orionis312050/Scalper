@@ -2,9 +2,12 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from scalper import pipeline
 from scalper.ocr import FakeOCR, ocr_chapter
-from scalper.typeset import replace_texts, typeset_chapter, wrap_text
+from scalper.translator import FakeLLM
+from scalper.typeset import _inpaint, replace_texts, typeset_chapter, wrap_text
 
 try:
     from PIL import Image, ImageDraw
@@ -72,6 +75,50 @@ class TestOCRTypeset(unittest.TestCase):
             )
             outputs = typeset_chapter(d, "fr")
             self.assertEqual(len(outputs), 1)
+            self.assertTrue((d / "export" / "images-fr" / "p1.png").exists())
+
+    def test_typeset_chapter_explicit_translations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "images").mkdir()
+            self._make_image(d / "images" / "p1.png")
+            (d / "ocr.json").write_text(
+                json.dumps({"lang": "eng", "regions": [{"index": 0, "image": "p1.png", "box": [10, 10, 280, 60], "text": "Hello world"}]}),
+                encoding="utf-8",
+            )
+            outputs = typeset_chapter(d, "fr", translations=["Bonjour le monde"])
+            self.assertEqual(len(outputs), 1)
+            self.assertTrue((d / "export" / "images-fr" / "p1.png").exists())
+
+    def test_inpaint_uses_background_ring_not_text(self):
+        img = Image.new("RGB", (300, 120), (200, 220, 255))
+        d = ImageDraw.Draw(img)
+        d.text((20, 20), "Texte noir sur fond clair", fill=(0, 0, 0))
+        box = [10, 10, 280, 60]
+        fill = _inpaint(img, box)
+        # la couleur estimée doit rester proche du fond (200,220,255), pas assombrie par le texte
+        self.assertGreater(fill[0], 150)
+        self.assertGreater(fill[1], 170)
+        self.assertGreater(fill[2], 200)
+        px = img.getpixel((150, 35))
+        self.assertGreater(px[0], 150)
+
+    def test_pipeline_ocr_typeset_end_to_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "images").mkdir()
+            self._make_image(d / "images" / "p1.png")
+            regions = [{"index": 0, "image": "p1.png", "box": [10, 10, 280, 60], "text": "Hello world"}]
+
+            def fake_ocr(chapter_dir, client, lang="eng"):
+                (Path(chapter_dir) / "ocr.json").write_text(
+                    json.dumps({"lang": lang, "regions": regions}), encoding="utf-8"
+                )
+                return regions
+
+            with mock.patch("scalper.ocr.ocr_chapter", side_effect=fake_ocr):
+                out = pipeline._run_ocr_typeset(d, {"language": "en"}, "fr", FakeLLM(), {})
+            self.assertTrue(out.startswith("ok"), out)
             self.assertTrue((d / "export" / "images-fr" / "p1.png").exists())
 
 

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scalper"
+version = "0.1.0"
+description = "Pipeline de scraping légal et de traduction de chapitres manga/webtoon (sources autorisées uniquement)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+agents = ["mistralai-agents>=1.1"]
+
+[project.scripts]
+scalper = "scalper.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+scalper = ["data/demo/*"]
+
+[tool.mistralai.agents]
+entrypoint = "scalper.agents.main:agent"

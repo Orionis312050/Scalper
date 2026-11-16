@@ -14,6 +14,12 @@ class TestLegal(unittest.TestCase):
             self.assertFalse(v.allowed, url)
             self.assertIn("blocage", v.reasons[0])
 
+    def test_keiyoushi_extensions_blocked(self):
+        for url in ("https://keiyoushi.github.io", "https://keiyoushi.github.io/extensions", "keiyoushi.com"):
+            v = legal.check_source(url)
+            self.assertFalse(v.allowed, url)
+            self.assertIn("blocage", v.reasons[0])
+
     def test_unknown_domain_blocked(self):
         v = legal.check_source("https://site-inconnu.example/manga")
         self.assertFalse(v.allowed)

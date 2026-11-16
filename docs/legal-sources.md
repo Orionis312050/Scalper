@@ -12,6 +12,10 @@ Scalper ne doit traiter que des contenus pour lesquels une autorisation existe.
 ## Interdit (bloqué par `legal-source-check`)
 - Sites de scanlation non autorisés hébergeant des mangas commerciaux sans licence
   (ex. **mangas-origines**) : contrefaçon + violation des CGU.
+- **keiyoushi.github.io / keiyoushi.com** : index d'extensions de lecteurs pointant vers des
+  sites de scanlation non autorisés — bloqué. Pour suivre un groupe de scanlation (ex.
+  Keiyoushi), utiliser la voie légale : l'API officielle MangaDex avec le filtre par groupe
+  (`scalper list-chapters mangadex <series> --group Keiyoushi`, `scalper list-groups mangadex --query Keiyoushi`).
 - Toute source dont `robots.txt` interdit le chemin ciblé.
 - Tout contournement de paywall, captcha, authentification ou DRM.
 

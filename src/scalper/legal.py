@@ -19,8 +19,10 @@ USER_AGENT = "Scalper/1.0 (+https://github.com/Orionis312050/Scalper)"
 
 BLOCKED_DOMAINS: dict[str, str] = {
     "mangas-origines.fr": "site de scanlation non autorisé (contrefaçon de mangas commerciaux)",
+    "keiyoushi.github.io": "index d'extensions Keiyoushi pointant vers des sites de scanlation non autorisés",
+    "keiyoushi.com": "dépôt d'extensions Keiyoushi pointant vers des sites de scanlation non autorisés",
 }
-BLOCKED_SUBSTRINGS = ("mangas-origines",)
+BLOCKED_SUBSTRINGS = ("mangas-origines", "keiyoushi.github.io", "keiyoushi.com")
 
 TRUSTED_SOURCES: dict[str, dict[str, str]] = {
     "api.mangadex.org": {
@@ -32,6 +34,32 @@ TRUSTED_SOURCES: dict[str, dict[str, str]] = {
         "kind": "local-fixture",
     },
 }
+
+# Sources personnalisées déclarées par l'utilisateur (sources.toml).
+# La liste de blocage a TOUJOURS priorité sur ce registre : aucune config ne
+# peut autoriser un domaine bloqué.
+CUSTOM_SOURCES: dict[str, dict[str, str]] = {}
+
+
+def register_custom_sources(entries: dict[str, dict]) -> None:
+    """Enregistre des sources personnalisées. Champ 'license' obligatoire."""
+    for domain, cfg in entries.items():
+        lic = str(cfg.get("license", "")).strip()
+        if not lic:
+            raise ValueError(
+                f"source '{domain}': le champ 'license' est obligatoire "
+                "(API officielle, CC, domaine public ou contenu propre)"
+            )
+        CUSTOM_SOURCES[domain.lower()] = {"license": lic, "kind": str(cfg.get("kind", "html"))}
+
+
+def load_config(path: str) -> None:
+    """Charge un registre de sources TOML : [source."domaine"] license = "..." kind = "..."."""
+    import tomllib
+    from pathlib import Path
+
+    data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    register_custom_sources(data.get("source", {}))
 
 
 @dataclass
@@ -90,14 +118,14 @@ def check_source(source: str, path: str = "/") -> Verdict:
                 license="",
             )
 
-    trusted = TRUSTED_SOURCES.get(domain)
+    trusted = TRUSTED_SOURCES.get(domain) or CUSTOM_SOURCES.get(domain)
     if trusted is None:
         return Verdict(
             source=source,
             verdict="blocked",
             reasons=[
-                "source non enregistrée : ajoutez-la manuellement dans TRUSTED_SOURCES "
-                "avec sa licence après vérification (robots.txt, CGU, licence CC/domaine public/API officielle)"
+                "source non enregistrée : déclarez-la dans sources.toml (champ 'license' obligatoire) "
+                "après vérification manuelle (robots.txt, CGU, licence CC/domaine public/API officielle)"
             ],
             license="",
         )

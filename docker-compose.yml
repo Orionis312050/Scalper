@@ -1,0 +1,31 @@
+# Déploiement Scalper — prêt pour Coolify (New Resource → Docker Compose depuis ce repo).
+#
+# 1) cp .env.example .env  et renseigne MISTRAL_API_KEY (jamais committer .env)
+# 2) (optionnel) cp sources.example.toml sources.toml et déclare tes sources légales
+# 3) docker compose up -d    (ou déploiement Coolify)
+#
+# Le conteneur applique le gate légal : sources non déclarées / bloquées
+# (mangas-origines, keiyoushi.github.io) -> jamais traitées.
+services:
+  scalper:
+    build: .
+    container_name: scalper
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Décommente si tu montes un registre de sources personnalisé :
+      # - SCALPER_CONFIG=/app/sources.toml
+    volumes:
+      - ./data:/app/data
+      - ./out:/app/out
+      # Décommente si tu as un sources.toml personnalisé :
+      # - ./sources.toml:/app/sources.toml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

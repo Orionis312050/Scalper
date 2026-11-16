@@ -35,12 +35,24 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 | `scalper list-series <source>` / `list-chapters <source> <series> [--group Keiyoushi]` | catalogage (filtre par groupe via API MangaDex) |
 | `scalper list-groups mangadex --query Keiyoushi` | recherche de groupes de scanlation (API officielle) |
 | `scalper --config sources.toml fetch-url <url>` | lien direct (gate légal : licence déclarée + robots.txt + blocage) |
+| `scalper ocr <chapter_dir> [--mock-ocr]` | OCR des images (tesseract) → `ocr.json` — **licences dérivables uniquement** |
+| `scalper typeset <chapter_dir> --lang fr` | remplace le texte des images par la traduction → `export/images-fr/` |
+| `scalper run ... --with-ocr` | pipeline + OCR/typeset (si licence dérivable et images présentes) |
 | `scalper fetch <source> <series> <chapitre>` | téléchargement brut + `state.json` (reprise) |
 | `scalper clean <raw.html> --out chapter.json` | nettoyage/structuration en blocs typés |
 | `scalper translate <chapter.json> --lang fr [--mock-llm]` | traduction LLM + glossaire |
 | `scalper qa <source.json> <traduit.json> --lang fr` | score 0-100, pass si ≥ 80 |
 | `scalper export <traduit.json> --format md\|json\|html` | export avec page licence |
 | `scalper run --source ... --series ... --lang fr` | pipeline complet end-to-end |
+
+## OCR & remplacement du texte dans les images (V2)
+
+`scalper ocr` (Tesseract via `pytesseract`, binaire installé dans l'image Docker) extrait les
+régions texte des images (`ocr.json`) ; `scalper typeset` efface la bulle (inpainting par couleur
+moyenne floutée) et redessine la traduction (Pillow). **Restriction légale** : ce traitement crée
+une œuvre dérivée des images, donc il est réservé aux sources en **domaine public / Creative
+Commons / contenu propre** (`legal.allows_derivatives`) — la source `mangadex` (images selon
+licence de l'œuvre) et toute source bloquée sont refusées.
 
 ## Architecture
 
@@ -68,6 +80,16 @@ python -m pytest -q        # ou python -m unittest discover -s tests
 ```
 
 CI GitHub Actions (lint + tests) sur chaque PR — voir `.github/workflows/ci.yml`.
+
+## Déploiement Docker / Coolify
+
+```bash
+cp .env.example .env       # MISTRAL_API_KEY (jamais committer)
+docker compose up -d       # API sur http://localhost:8000 + interface web sur http://localhost:8000/
+```
+
+Déploiement pas à pas sur Coolify : [docs/deploy-coolify.md](docs/deploy-coolify.md).
+Le conteneur applique le même gate légal que la CLI (sources non déclarées/bloquées refusées).
 
 ## Licence
 

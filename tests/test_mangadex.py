@@ -1,7 +1,10 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+from scalper.models import ChapterRef
 from scalper.sources.mangadex import MangaDexAdapter
 
 GROUP_UUID = "123e4567-e89b-42d3-a456-426614174000"
@@ -61,6 +64,43 @@ class TestMangaDexGroupFilter(unittest.TestCase):
         qs = parse_qs(urlparse(feed_url).query)
         self.assertNotIn("groups[]", qs)
         self.assertNotIn("translatedLanguage[]", qs)
+
+
+class TestFetchChapter(unittest.TestCase):
+    def _adapter(self, at_home_chapter, chapter_attrs) -> tuple[MangaDexAdapter, StubFetcher]:
+        stub = StubFetcher(
+            {
+                "/at-home/server/": {"result": "ok", "baseUrl": "https://img.example", "chapter": at_home_chapter},
+                "/chapter/ch-1": {"data": {"attributes": chapter_attrs}},
+                "img.example": {"fake": "image-bytes"},
+            }
+        )
+        return MangaDexAdapter(fetcher=stub), stub
+
+    def test_fetch_chapter_uses_at_home_payload(self):
+        adapter, _ = self._adapter(
+            {"hash": "abc123", "data": ["p1.png", "p2.png"], "dataSaver": []},
+            {"pages": 2},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = ChapterRef(id="ch-1", number="1", title="Start", url="https://mangadex.org/chapter/ch-1")
+            adapter.fetch_chapter(ref, Path(tmp))
+            raw = (Path(tmp) / "raw.html").read_text(encoding="utf-8")
+            self.assertIn("![page 1](images/p1.png)", raw)
+            self.assertIn("![page 2](images/p2.png)", raw)
+            self.assertTrue((Path(tmp) / "images" / "p1.png").exists())
+            meta = json.loads((Path(tmp) / "meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta["pages"], 2)
+            self.assertEqual(meta["source"], "mangadex")
+
+    def test_fetch_chapter_without_hash_does_not_crash(self):
+        adapter, _ = self._adapter({}, {"pages": 0})
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = ChapterRef(id="ch-1", number="1", title="Start", url="https://mangadex.org/chapter/ch-1")
+            adapter.fetch_chapter(ref, Path(tmp))
+            raw = (Path(tmp) / "raw.html").read_text(encoding="utf-8")
+            self.assertIn("images non disponibles", raw)
+            self.assertFalse((Path(tmp) / "images").exists())
 
 
 if __name__ == "__main__":

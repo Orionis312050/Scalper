@@ -91,18 +91,23 @@ class MangaDexAdapter:
         dest_dir.mkdir(parents=True, exist_ok=True)
         at_home = self._get_json(f"/at-home/server/{chapter.id}")
         base = at_home["baseUrl"]
-        data = self._get_json(f"/chapter/{chapter.id}")
-        attrs = data["data"]["attributes"]
-        chapter_hash = attrs["hash"]
-        pages = attrs.get("pages", 0)
-        files = attrs.get("data", [])
+        # Le payload at-home embarque hash/data/dataSaver ; repli sur /chapter/{id}
+        # (qui peut ne pas encore exposer hash/data juste après une publication).
+        payload = at_home.get("chapter") or {}
+        attrs = self._get_json(f"/chapter/{chapter.id}")["data"]["attributes"]
+        chapter_hash = payload.get("hash") or attrs.get("hash")
+        pages = attrs.get("pages") or payload.get("pages") or 0
+        files = payload.get("data") or attrs.get("data") or []
         lines = [f"# raw chapter {chapter.id} ({chapter.title})", ""]
-        img_dir = dest_dir / "images"
-        img_dir.mkdir(exist_ok=True)
-        for i, fname in enumerate(files, start=1):
-            url = f"{base}/data/{chapter_hash}/{fname}"
-            (img_dir / fname).write_bytes(self.fetcher.get(url))
-            lines.append(f"![page {i}](images/{fname})")
+        if chapter_hash and files:
+            img_dir = dest_dir / "images"
+            img_dir.mkdir(exist_ok=True)
+            for i, fname in enumerate(files, start=1):
+                url = f"{base}/data/{chapter_hash}/{fname}"
+                (img_dir / fname).write_bytes(self.fetcher.get(url))
+                lines.append(f"![page {i}](images/{fname})")
+        else:
+            lines.append("(images non disponibles pour ce chapitre pour le moment)")
         (dest_dir / "raw.html").write_text("\n".join(lines), encoding="utf-8")
         (dest_dir / "meta.json").write_text(
             json.dumps(

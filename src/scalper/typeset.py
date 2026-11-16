@@ -1,7 +1,5 @@
 """Remplacement du texte dans les images : inpainting de la bulle + retypographie
 de la traduction (Pillow uniquement).
-
-Réservé aux sources dont la licence autorise les œuvres dérivées — voir legal.allows_derivatives.
 """
 
 from __future__ import annotations

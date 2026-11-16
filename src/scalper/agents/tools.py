@@ -11,7 +11,7 @@ from pathlib import Path
 
 from mistralai import agents
 
-from .. import legal, pipeline
+from .. import pipeline
 from ..cleaner import clean_chapter
 from ..models import Chapter
 from ..qa import qa_chapter
@@ -19,14 +19,8 @@ from ..translator import FakeLLM, MistralChatClient, load_glossary, translate_ch
 
 
 @agents.tool
-def check_source(source: str) -> dict:
-    """Valide qu'une source de mangas/webtoons est légale (robots.txt, CGU, licence, liste de blocage). Retourne {verdict: allowed|blocked, reasons, license}."""
-    return legal.check_source(source).to_dict()
-
-
-@agents.tool
 def run_chapter_pipeline(source: str, series: str, lang: str, mock_llm: bool = False) -> dict:
-    """Exécute le pipeline complet (check légal -> scrape -> clean -> translate -> QA -> export) pour une série. mock_llm=True pour une démo hors ligne."""
+    """Exécute le pipeline complet (scrape -> clean -> translate -> QA -> export) pour une série. mock_llm=True pour une démo hors ligne."""
     return pipeline.run_pipeline(source, series, lang, mock_llm=mock_llm)
 
 

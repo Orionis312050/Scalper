@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "scalper"
 version = "0.1.0"
-description = "Pipeline de scraping légal et de traduction de chapitres manga/webtoon (sources autorisées uniquement)"
+description = "Pipeline de scraping et de traduction de chapitres manga/webtoon"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

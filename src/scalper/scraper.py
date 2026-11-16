@@ -9,7 +9,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from .legal import USER_AGENT
+USER_AGENT = "Scalper/1.0 (+https://github.com/Orionis312050/Scalper)"
 
 
 class FetchError(Exception):

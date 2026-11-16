@@ -1,8 +1,7 @@
-"""Adaptateur API officielle MangaDex (https://api.mangadex.org) — source légale.
+"""Adaptateur API MangaDex (https://api.mangadex.org).
 
 L'API publique ne nécessite pas de clé pour la lecture. Rate limiting appliqué.
-Permet de filtrer les chapitres par groupe de scanlation (ex. Keiyoushi) via le
-paramètre groups[] — la voie légale pour suivre un groupe donné.
+Permet de filtrer les chapitres par groupe (ex. Keiyoushi) via le paramètre groups[].
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F
 
 class MangaDexAdapter:
     id = "mangadex"
-    license = "API officielle MangaDex (données publiques ; images selon licence de l'œuvre)"
 
     def __init__(self, fetcher: RespectfulFetcher | None = None) -> None:
         self.fetcher = fetcher or RespectfulFetcher(min_delay=1.0)
@@ -43,13 +41,12 @@ class MangaDexAdapter:
                 id=m["id"],
                 title=m["attributes"]["title"].get("en") or next(iter(m["attributes"]["title"].values())),
                 url=f"https://mangadex.org/title/{m['id']}",
-                license=self.license,
             )
             for m in data.get("data", [])
         ]
 
     def list_groups(self, query: str = "", limit: int = 20) -> list[dict]:
-        """Recherche des groupes de scanlation par nom (ex. 'Keiyoushi')."""
+        """Recherche des groupes de traduction par nom (ex. 'Keiyoushi')."""
         params: dict[str, object] = {"limit": limit, "order[name]": "asc"}
         if query:
             params["name"] = query
@@ -109,7 +106,7 @@ class MangaDexAdapter:
         (dest_dir / "raw.html").write_text("\n".join(lines), encoding="utf-8")
         (dest_dir / "meta.json").write_text(
             json.dumps(
-                {"source": self.id, "license": self.license, "chapter": chapter.to_dict(), "pages": pages},
+                {"source": self.id, "chapter": chapter.to_dict(), "pages": pages},
                 ensure_ascii=False,
                 indent=2,
             ),

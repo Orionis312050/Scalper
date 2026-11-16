@@ -1,8 +1,4 @@
-"""OCR des images d'un chapitre (texte dans les bulles).
-
-Réservé aux sources dont la licence autorise les œuvres dérivées
-(domaine public / Creative Commons / contenu propre) — voir legal.allows_derivatives.
-"""
+"""OCR des images d'un chapitre (texte dans les bulles)."""
 
 from __future__ import annotations
 

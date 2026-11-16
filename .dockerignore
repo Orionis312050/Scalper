@@ -7,7 +7,6 @@ venv
 out
 data
 .env
-sources.toml
 tests
 docs
 skills

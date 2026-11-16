@@ -1,4 +1,4 @@
-"""CLI Scalper : check-source, list-series, list-groups, list-chapters, fetch, clean, translate, qa, export, run."""
+"""CLI Scalper : list-series, list-groups, list-chapters, fetch, fetch-url, clean, translate, qa, export, ocr, typeset, serve, run."""
 
 from __future__ import annotations
 
@@ -7,8 +7,9 @@ import json
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
-from . import legal, pipeline
+from . import pipeline
 from .cleaner import clean_chapter
 from .exporter import export_chapter, slugify
 from .models import Chapter
@@ -23,18 +24,14 @@ def _print(data: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="scalper", description="Pipeline légal de scraping + traduction de chapitres manga/webtoon")
-    p.add_argument("--config", default=None, help="registre de sources personnalisées (TOML, ex. sources.example.toml)")
+    p = argparse.ArgumentParser(prog="scalper", description="Pipeline de scraping + traduction de chapitres manga/webtoon")
     sub = p.add_subparsers(dest="cmd", required=True)
-
-    c = sub.add_parser("check-source", help="valide une source (robots.txt, licence, liste de blocage)")
-    c.add_argument("source")
 
     c = sub.add_parser("list-series", help="liste les séries d'une source")
     c.add_argument("source")
     c.add_argument("--query", default="")
 
-    c = sub.add_parser("list-groups", help="liste les groupes de scanlation (source mangadex uniquement)")
+    c = sub.add_parser("list-groups", help="liste les groupes de traduction (source mangadex uniquement)")
     c.add_argument("source")
     c.add_argument("--query", default="")
 
@@ -73,16 +70,16 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--format", choices=["md", "json", "html"], required=True)
     c.add_argument("--out", required=True)
 
-    c = sub.add_parser("fetch-url", help="récupère un lien direct (soumis à legal-source-check : licence déclarée + robots.txt + liste de blocage)")
+    c = sub.add_parser("fetch-url", help="récupère un lien direct")
     c.add_argument("url")
     c.add_argument("--out", default="data")
 
-    c = sub.add_parser("ocr", help="OCR des images d'un chapitre (réservé aux licences dérivables : domaine public/CC/propre)")
+    c = sub.add_parser("ocr", help="OCR des images d'un chapitre (tesseract)")
     c.add_argument("chapter_dir")
     c.add_argument("--lang", default="eng", help="langue OCR (tesseract)")
     c.add_argument("--mock-ocr", action="store_true")
 
-    c = sub.add_parser("typeset", help="remplace le texte des images par la traduction (licences dérivables uniquement)")
+    c = sub.add_parser("typeset", help="remplace le texte des images par la traduction")
     c.add_argument("chapter_dir")
     c.add_argument("--lang", required=True)
 
@@ -98,16 +95,10 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", default="out")
     c.add_argument("--max-chapters", type=int, default=None)
     c.add_argument("--mock-llm", action="store_true", help="démo hors ligne (LLM factice)")
-    c.add_argument("--with-ocr", action="store_true", help="OCR + remplacement du texte dans les images (licences dérivables uniquement)")
+    c.add_argument("--with-ocr", action="store_true", help="OCR + remplacement du texte dans les images")
 
     args = p.parse_args(argv)
 
-    if getattr(args, "config", None):
-        legal.load_config(args.config)
-
-    if args.cmd == "check-source":
-        _print(legal.check_source(args.source).to_dict())
-        return 0
     if args.cmd == "list-series":
         adapter = get_adapter(args.source)
         series = adapter.list_series(query=args.query) if args.source == "mangadex" else adapter.list_series()
@@ -173,19 +164,14 @@ def main(argv: list[str] | None = None) -> int:
         _print({"exported": str(path)})
         return 0
     if args.cmd == "fetch-url":
-        verdict = legal.check_source(args.url)
-        if not verdict.allowed:
-            _print({"status": "blocked", "verdict": verdict.to_dict()})
-            return 3
         fetcher = RespectfulFetcher()
         html = fetcher.get(args.url).decode("utf-8", errors="replace")
-        domain = legal.domain_of(args.url)
+        domain = (urlparse(args.url).netloc or args.url).lower()
         dest = Path(args.out) / "raw" / domain / slugify(args.url)
         dest.mkdir(parents=True, exist_ok=True)
         (dest / "raw.html").write_text(html, encoding="utf-8")
         meta = {
             "source": domain,
-            "license": verdict.license,
             "url": args.url,
             "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
@@ -197,10 +183,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "ocr":
         from .ocr import FakeOCR, TesseractOCR, ocr_chapter
 
-        meta = json.loads((Path(args.chapter_dir) / "meta.json").read_text(encoding="utf-8"))
-        if not legal.allows_derivatives(meta.get("license", "")):
-            _print({"status": "blocked", "reason": "licence non dérivable : OCR/typeset réservé domaine public/CC/contenu propre"})
-            return 3
         client = FakeOCR() if args.mock_ocr else TesseractOCR(lang=args.lang)
         regions = ocr_chapter(Path(args.chapter_dir), client, lang=args.lang)
         _print({"status": "ok", "regions": len(regions), "out": str(Path(args.chapter_dir) / "ocr.json")})
@@ -208,10 +190,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "typeset":
         from .typeset import typeset_chapter
 
-        meta = json.loads((Path(args.chapter_dir) / "meta.json").read_text(encoding="utf-8"))
-        if not legal.allows_derivatives(meta.get("license", "")):
-            _print({"status": "blocked", "reason": "licence non dérivable : OCR/typeset réservé domaine public/CC/contenu propre"})
-            return 3
         outputs = typeset_chapter(Path(args.chapter_dir), args.lang)
         _print({"status": "ok", "images": outputs})
         return 0

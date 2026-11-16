@@ -11,18 +11,16 @@ from __future__ import annotations
 
 from mistralai import agents
 
-from .tools import check_source, qa_translation, run_chapter_pipeline, translate_text
+from .tools import qa_translation, run_chapter_pipeline, translate_text
 
 scraper_agent = agents.Agent(
     name="scraper-agent",
     model="mistral-small-latest",
     instructions=(
-        "Tu es l'agent scraper de Scalper. Tu valides toujours la source avec "
-        "check_source avant toute requête (aucune source non autorisée, ex. sites "
-        "de scanlation : robots.txt, rate limiting, pas de contournement). Tu "
-        "exécutes ensuite le scraping via run_chapter_pipeline ou list/fetch."
+        "Tu es l'agent scraper de Scalper. Tu "
+        "exécutes le scraping via run_chapter_pipeline ou list/fetch (rate limiting, UA identifiable)."
     ),
-    tools=[check_source, run_chapter_pipeline],
+    tools=[run_chapter_pipeline],
 )
 
 translator_agent = agents.Agent(
@@ -52,13 +50,11 @@ agent = agents.Agent(
     name="scalper-orchestrator",
     model="mistral-large-latest",
     instructions=(
-        "Tu es l'orchestrateur du pipeline Scalper (scraping légal + traduction de "
-        "chapitres manga/webtoon). Règle absolue : seules les sources légales sont "
-        "traitées (API officielles, Creative Commons, domaine public, contenus "
-        "propres) ; check_source doit retourner allowed avant toute action. "
+        "Tu es l'orchestrateur du pipeline Scalper (scraping + traduction de "
+        "chapitres manga/webtoon). "
         "Délègue le scraping à scraper-agent, la traduction à translator-agent et "
         "le contrôle qualité à qa-agent, puis consolide les résultats."
     ),
-    tools=[check_source, run_chapter_pipeline],
+    tools=[run_chapter_pipeline],
     subagents=[scraper_agent, translator_agent, qa_agent],
 )

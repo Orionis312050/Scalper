@@ -10,11 +10,6 @@ from scalper.sources import get_adapter
 
 
 class TestPipeline(unittest.TestCase):
-    def test_blocked_source(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            res = pipeline.run_pipeline("https://mangas-origines.fr", "x", "fr", out_root=tmp, mock_llm=True)
-            self.assertEqual(res["status"], "blocked")
-
     def test_demo_end_to_end_mock_llm(self):
         with tempfile.TemporaryDirectory() as tmp:
             res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True)
@@ -37,14 +32,14 @@ class TestPipeline(unittest.TestCase):
 
 
 class TestExporter(unittest.TestCase):
-    def test_exports_contain_license(self):
+    def test_exports(self):
         ch = Chapter(
-            meta={"source": "demo", "license": "fixture test", "fetched_at": "2026-01-01", "url": "demo://x", "title": "T", "language": "fr"},
+            meta={"source": "demo", "fetched_at": "2026-01-01", "url": "demo://x", "title": "T", "language": "fr"},
             blocks=[Block(index=0, type="narration", text="Bonjour"), Block(index=1, type="image", image="images/p.png")],
         )
         with tempfile.TemporaryDirectory() as tmp:
             md = export_chapter(ch, "md", Path(tmp))
-            self.assertIn("Source et licence", md.read_text(encoding="utf-8"))
+            self.assertIn("Bonjour", md.read_text(encoding="utf-8"))
             self.assertIn("[IMG:1]", md.read_text(encoding="utf-8"))
             js = export_chapter(ch, "json", Path(tmp))
             self.assertEqual(json.loads(js.read_text(encoding="utf-8"))["blocks"][1]["image"], "images/p.png")

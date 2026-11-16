@@ -1,4 +1,4 @@
-"""Orchestration : legal-source-check -> scrape -> clean -> translate -> QA -> export."""
+"""Orchestration : scrape -> clean -> translate -> QA -> export."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import legal
 from .cleaner import clean_chapter
 from .exporter import export_chapter
 from .models import Chapter
@@ -29,10 +28,6 @@ def run_pipeline(
     with_ocr: bool = False,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
-    verdict = legal.check_source(source_id)
-    if not verdict.allowed:
-        return {"status": "blocked", "verdict": verdict.to_dict()}
-
     fetcher = fetcher or RespectfulFetcher(min_delay=1.0)
     adapter = get_adapter(source_id, fetcher=fetcher)
     chapters = adapter.list_chapters(series_id, **({"group": group} if group else {}))
@@ -90,8 +85,6 @@ def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str) -> str:
     from .ocr import TesseractOCR, ocr_chapter
     from .typeset import typeset_chapter
 
-    if not legal.allows_derivatives(meta.get("license", "")):
-        return "skipped : licence non dérivable (OCR/typeset réservé domaine public/CC/contenu propre)"
     if not (dest / "images").exists():
         return "skipped : aucune image dans ce chapitre"
     try:

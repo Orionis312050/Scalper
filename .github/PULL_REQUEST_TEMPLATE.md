@@ -7,12 +7,8 @@
 ## Type
 - [ ] Feature (Story)  [ ] Bug  [ ] Task / chore
 
-## Conformité légale (obligatoire)
-- [ ] Aucune source non autorisée ajoutée (legal-source-check inchangé ou élargi avec licence justifiée)
-- [ ] robots.txt / rate limiting / pas de contournement respectés
-- [ ] Pas de secret committé (clés API hors du code)
-
 ## Vérification
+- [ ] Pas de secret committé (clés API hors du code)
 - [ ] `python -m pytest -q` passe localement
 - [ ] CI verte sur la PR
 - [ ] Doc à jour si comportement change

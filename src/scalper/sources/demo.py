@@ -1,4 +1,4 @@
-"""Adaptateur 'demo' : fixture locale (texte inventé, domaine public).
+"""Adaptateur 'demo' : fixture locale.
 
 Permet de faire tourner le pipeline de bout en bout hors ligne.
 """
@@ -15,7 +15,6 @@ from ..models import ChapterRef, Series
 
 class DemoAdapter:
     id = "demo"
-    license = "fixture de test interne (texte inventé, domaine public)"
 
     def _data_dir(self) -> Path:
         return Path(str(resources.files("scalper") / "data" / "demo"))
@@ -25,7 +24,7 @@ class DemoAdapter:
 
     def list_series(self) -> list[Series]:
         idx = self._index()
-        return [Series(id=s["id"], title=s["title"], url=s["url"], license=self.license) for s in idx["series"]]
+        return [Series(id=s["id"], title=s["title"], url=s["url"]) for s in idx["series"]]
 
     def list_chapters(self, series_id: str, **kwargs) -> list[ChapterRef]:
         idx = self._index()
@@ -52,7 +51,7 @@ class DemoAdapter:
         shutil.copyfile(src_file, dest_dir / "raw.html")
         (dest_dir / "meta.json").write_text(
             json.dumps(
-                {"source": self.id, "license": self.license, "chapter": chapter.to_dict()},
+                {"source": self.id, "chapter": chapter.to_dict()},
                 ensure_ascii=False,
                 indent=2,
             ),

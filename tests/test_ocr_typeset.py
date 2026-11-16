@@ -3,7 +3,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scalper import legal
 from scalper.ocr import FakeOCR, ocr_chapter
 from scalper.typeset import replace_texts, typeset_chapter, wrap_text
 
@@ -13,17 +12,6 @@ try:
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
-
-
-class TestDerivativeGate(unittest.TestCase):
-    def test_demo_license_allows_derivatives(self):
-        self.assertTrue(legal.allows_derivatives("fixture de test interne (texte inventé, domaine public)"))
-
-    def test_mangadex_license_refuses_derivatives(self):
-        self.assertFalse(legal.allows_derivatives("API officielle MangaDex (données publiques ; images selon licence de l'œuvre)"))
-
-    def test_cc_license_allows_derivatives(self):
-        self.assertTrue(legal.allows_derivatives("Creative Commons CC BY 4.0"))
 
 
 @unittest.skipUnless(HAS_PIL, "Pillow requis")

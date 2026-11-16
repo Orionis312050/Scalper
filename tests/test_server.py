@@ -51,17 +51,6 @@ class TestServer(unittest.TestCase):
             self.assertIn("text/html", r.headers.get("Content-Type", ""))
             self.assertIn("Scalper", body)
             self.assertIn("/run", body)
-            self.assertIn("/check-source", body)
-
-    def test_check_source_demo_allowed(self):
-        status, body = self._get("/check-source?source=demo")
-        self.assertEqual(status, 200)
-        self.assertEqual(body["verdict"], "allowed")
-
-    def test_check_source_blocked(self):
-        status, body = self._get("/check-source?source=https://mangas-origines.fr")
-        self.assertEqual(status, 200)
-        self.assertEqual(body["verdict"], "blocked")
 
     def test_run_demo_mock_llm(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -69,11 +58,6 @@ class TestServer(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(body["status"], "done")
             self.assertEqual(len(body["chapters"]), 2)
-
-    def test_run_blocked_source_returns_403(self):
-        status, body = self._post("/run", {"source": "https://keiyoushi.github.io", "series": "x", "lang": "fr", "mock_llm": True})
-        self.assertEqual(status, 403)
-        self.assertEqual(body["status"], "blocked")
 
     def test_run_missing_field_400(self):
         status, body = self._post("/run", {"source": "demo"})

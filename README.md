@@ -32,7 +32,8 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 | Commande | Description |
 |---|---|
 | `scalper check-source <url>` | verdict légal (allowed/blocked + raisons) |
-| `scalper list-series <source>` / `list-chapters <source> <series>` | catalogage |
+| `scalper list-series <source>` / `list-chapters <source> <series> [--group Keiyoushi]` | catalogage (filtre par groupe via API MangaDex) |
+| `scalper list-groups mangadex --query Keiyoushi` | recherche de groupes de scanlation (API officielle) |
 | `scalper fetch <source> <series> <chapitre>` | téléchargement brut + `state.json` (reprise) |
 | `scalper clean <raw.html> --out chapter.json` | nettoyage/structuration en blocs typés |
 | `scalper translate <chapter.json> --lang fr [--mock-llm]` | traduction LLM + glossaire |

@@ -25,6 +25,7 @@ def run_pipeline(
     mock_llm: bool = False,
     fetcher: RespectfulFetcher | None = None,
     max_chapters: int | None = None,
+    group: str | None = None,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
     verdict = legal.check_source(source_id)
@@ -33,7 +34,7 @@ def run_pipeline(
 
     fetcher = fetcher or RespectfulFetcher(min_delay=1.0)
     adapter = get_adapter(source_id, fetcher=fetcher)
-    chapters = adapter.list_chapters(series_id)
+    chapters = adapter.list_chapters(series_id, **({"group": group} if group else {}))
     if max_chapters is not None:
         chapters = chapters[:max_chapters]
 

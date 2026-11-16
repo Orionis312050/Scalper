@@ -27,7 +27,7 @@ class DemoAdapter:
         idx = self._index()
         return [Series(id=s["id"], title=s["title"], url=s["url"], license=self.license) for s in idx["series"]]
 
-    def list_chapters(self, series_id: str) -> list[ChapterRef]:
+    def list_chapters(self, series_id: str, **kwargs) -> list[ChapterRef]:
         idx = self._index()
         chapters = idx["chapters"].get(series_id, [])
         return [

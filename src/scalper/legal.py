@@ -19,8 +19,10 @@ USER_AGENT = "Scalper/1.0 (+https://github.com/Orionis312050/Scalper)"
 
 BLOCKED_DOMAINS: dict[str, str] = {
     "mangas-origines.fr": "site de scanlation non autorisé (contrefaçon de mangas commerciaux)",
+    "keiyoushi.github.io": "index d'extensions Keiyoushi pointant vers des sites de scanlation non autorisés",
+    "keiyoushi.com": "dépôt d'extensions Keiyoushi pointant vers des sites de scanlation non autorisés",
 }
-BLOCKED_SUBSTRINGS = ("mangas-origines",)
+BLOCKED_SUBSTRINGS = ("mangas-origines", "keiyoushi.github.io", "keiyoushi.com")
 
 TRUSTED_SOURCES: dict[str, dict[str, str]] = {
     "api.mangadex.org": {

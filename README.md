@@ -69,6 +69,16 @@ python -m pytest -q        # ou python -m unittest discover -s tests
 
 CI GitHub Actions (lint + tests) sur chaque PR — voir `.github/workflows/ci.yml`.
 
+## Déploiement Docker / Coolify
+
+```bash
+cp .env.example .env       # MISTRAL_API_KEY (jamais committer)
+docker compose up -d       # sert http://localhost:8000 (GET /healthz, GET /check-source, POST /run)
+```
+
+Déploiement pas à pas sur Coolify : [docs/deploy-coolify.md](docs/deploy-coolify.md).
+Le conteneur applique le même gate légal que la CLI (sources non déclarées/bloquées refusées).
+
 ## Licence
 
 MIT — voir [LICENSE](LICENSE).

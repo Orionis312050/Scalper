@@ -77,6 +77,10 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("url")
     c.add_argument("--out", default="data")
 
+    c = sub.add_parser("serve", help="démarre le serveur HTTP (déploiement Docker/Coolify)")
+    c.add_argument("--host", default="127.0.0.1")
+    c.add_argument("--port", type=int, default=8000)
+
     c = sub.add_parser("run", help="pipeline complet end-to-end")
     c.add_argument("--source", required=True)
     c.add_argument("--series", required=True)
@@ -179,6 +183,11 @@ def main(argv: list[str] | None = None) -> int:
         chapter = clean_chapter(html, meta)
         (dest / "chapter.json").write_text(json.dumps(chapter.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
         _print({"status": "ok", "dest": str(dest), "blocks": len(chapter.blocks), "language": chapter.meta.get("language")})
+        return 0
+    if args.cmd == "serve":
+        from .server import serve
+
+        serve(args.host, args.port)
         return 0
     if args.cmd == "run":
         summary = pipeline.run_pipeline(

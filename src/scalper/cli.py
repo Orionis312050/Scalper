@@ -96,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--max-chapters", type=int, default=None)
     c.add_argument("--mock-llm", action="store_true", help="démo hors ligne (LLM factice)")
     c.add_argument("--with-ocr", action="store_true", help="OCR + remplacement du texte dans les images")
+    c.add_argument("--force", action="store_true", help="exporte même si la QA échoue (bypass vérification)")
 
     args = p.parse_args(argv)
 
@@ -203,6 +204,7 @@ def main(argv: list[str] | None = None) -> int:
             args.source, args.series, args.lang,
             out_root=Path(args.out), mock_llm=args.mock_llm,
             max_chapters=args.max_chapters, group=args.group, with_ocr=args.with_ocr,
+            force=args.force,
         )
         _print(summary)
         return 0 if summary.get("status") == "done" else 3

@@ -2,7 +2,7 @@
 
 Endpoints :
 - GET  /healthz
-- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"out"?}
+- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"force"?,"out"?}
 """
 
 from __future__ import annotations
@@ -26,12 +26,13 @@ INDEX_HTML = """<!doctype html>
 <input id="r-lang" placeholder="langue cible (fr, en, ...)" value="fr">
 <input id="r-group" placeholder="groupe optionnel (ex. Keiyoushi, mangadex uniquement)">
 <input id="r-max" placeholder="max chapitres (optionnel)">
-<label><input type="checkbox" id="r-mock" style="width:auto"> mock-llm (démo hors ligne)</label><br>
+<label><input type="checkbox" id="r-mock" style="width:auto"> mock-llm (démo hors ligne)</label>
+<label><input type="checkbox" id="r-force" style="width:auto"> forcer l'export même si la QA échoue</label><br>
 <button onclick="runPipeline()">Lancer le pipeline</button>
 </fieldset>
 <pre id="out">résultats ici…</pre>
 <script>
-async function runPipeline(){const g=document.getElementById('r-group').value;const m=document.getElementById('r-max').value;const body={source:document.getElementById('r-source').value,series:document.getElementById('r-series').value,lang:document.getElementById('r-lang').value,mock_llm:document.getElementById('r-mock').checked};if(g)body.group=g;if(m)body.max_chapters=Number(m);document.getElementById('out').textContent='en cours…';const r=await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});document.getElementById('out').textContent=r.status+'\\n'+JSON.stringify(await r.json(),null,2);}
+async function runPipeline(){const g=document.getElementById('r-group').value;const m=document.getElementById('r-max').value;const body={source:document.getElementById('r-source').value,series:document.getElementById('r-series').value,lang:document.getElementById('r-lang').value,mock_llm:document.getElementById('r-mock').checked,force:document.getElementById('r-force').checked};if(g)body.group=g;if(m)body.max_chapters=Number(m);document.getElementById('out').textContent='en cours…';const r=await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});document.getElementById('out').textContent=r.status+'\\n'+JSON.stringify(await r.json(),null,2);}
 </script>
 </body></html>
 """
@@ -81,6 +82,7 @@ class Handler(BaseHTTPRequestHandler):
                 max_chapters=body.get("max_chapters"),
                 group=body.get("group"),
                 with_ocr=bool(body.get("with_ocr", False)),
+                force=bool(body.get("force", False)),
             )
         except KeyError as e:
             return self._json(400, {"error": f"champ requis manquant: {e}"})

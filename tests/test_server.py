@@ -5,6 +5,7 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from unittest import mock
 
 from scalper.server import Handler
 
@@ -62,6 +63,16 @@ class TestServer(unittest.TestCase):
     def test_run_missing_field_400(self):
         status, body = self._post("/run", {"source": "demo"})
         self.assertEqual(status, 400)
+
+    def test_run_force_bypasses_qa_gate(self):
+        fake = {"score": 10, "pass": False, "issues": [{"type": "x", "critical": True}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("scalper.pipeline.qa_chapter", return_value=fake):
+                status, body = self._post("/run", {"source": "demo", "series": "demo-1", "lang": "fr", "mock_llm": True, "out": tmp, "max_chapters": 1, "force": True})
+            self.assertEqual(status, 200)
+            self.assertEqual(body["status"], "done")
+            self.assertEqual(body["chapters"][0]["status"], "ok")
+            self.assertTrue(body["chapters"][0].get("forced"))
 
 
 if __name__ == "__main__":

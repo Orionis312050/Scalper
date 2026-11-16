@@ -34,7 +34,7 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 | `scalper translate <chapter.json> --lang fr [--mock-llm]` | traduction LLM + glossaire |
 | `scalper qa <source.json> <traduit.json> --lang fr` | score 0-100, pass si ≥ 80 |
 | `scalper export <traduit.json> --format md\|json\|html` | export Markdown / JSON / HTML |
-| `scalper run --source ... --series ... --lang fr` | pipeline complet end-to-end |
+| `scalper run --source ... --series ... --lang fr [--force]` | pipeline complet end-to-end (`--force` = exporte même si la QA échoue) |
 
 ## OCR & remplacement du texte dans les images (V2)
 

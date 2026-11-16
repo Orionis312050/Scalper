@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scalper import pipeline
 from scalper.exporter import export_chapter, slugify
@@ -29,6 +30,28 @@ class TestPipeline(unittest.TestCase):
             pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True, max_chapters=1)
             res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True)
             self.assertTrue(any(c.get("skipped") for c in res["chapters"]))
+
+    def test_qa_failure_blocks_export_without_force(self):
+        fake = {"score": 10, "pass": False, "issues": [{"type": "x", "critical": True}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("scalper.pipeline.qa_chapter", return_value=fake):
+                res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True, max_chapters=1)
+            self.assertEqual(res["chapters"][0]["status"], "qa_failed")
+            raw1 = Path(tmp) / "raw" / "demo" / "demo-1" / "demo-1-ch1"
+            self.assertFalse((raw1 / "export").exists())
+
+    def test_force_exports_despite_qa_failure(self):
+        fake = {"score": 10, "pass": False, "issues": [{"type": "x", "critical": True}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("scalper.pipeline.qa_chapter", return_value=fake):
+                res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True, max_chapters=1, force=True)
+            self.assertEqual(res["status"], "done")
+            ch = res["chapters"][0]
+            self.assertEqual(ch["status"], "ok")
+            self.assertTrue(ch.get("forced"))
+            self.assertFalse(ch["qa"]["pass"])
+            raw1 = Path(tmp) / "raw" / "demo" / "demo-1" / "demo-1-ch1"
+            self.assertTrue(list((raw1 / "export").glob("*.md")))
 
 
 class TestExporter(unittest.TestCase):

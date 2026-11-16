@@ -12,7 +12,11 @@ COPY src ./src
 RUN pip install --no-cache-dir ".[ocr]"
 
 RUN useradd -m scalper && mkdir -p /app/data /app/out && chown -R scalper:scalper /app
-USER scalper
+
+# Le conteneur démarre en root : l'entrypoint chown les répertoires montés
+# (bind mounts root côté hôte, ex. Coolify) puis droppe les privilèges (setpriv).
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
@@ -20,4 +24,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')" || exit 1
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["scalper", "serve", "--host", "0.0.0.0", "--port", "8000"]

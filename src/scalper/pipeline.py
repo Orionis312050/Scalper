@@ -26,6 +26,7 @@ def run_pipeline(
     max_chapters: int | None = None,
     group: str | None = None,
     with_ocr: bool = False,
+    force: bool = False,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
     fetcher = fetcher or RespectfulFetcher(min_delay=1.0)
@@ -66,13 +67,15 @@ def run_pipeline(
             report = qa_chapter(chapter, translated, glossary, lang)
             (dest / f"qa.{lang}.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
             entry["qa"] = {"score": report["score"], "pass": report["pass"], "issues": len(report["issues"])}
-            if report["pass"]:
+            if report["pass"] or force:
                 for fmt in ("md", "json", "html"):
                     export_chapter(translated, fmt, dest / "export")
                 if with_ocr:
                     entry["ocr"] = _run_ocr_typeset(dest, meta, lang)
                 state.mark_done(ref.id)
                 entry["status"] = "ok"
+                if not report["pass"]:
+                    entry["forced"] = True
             else:
                 entry["status"] = "qa_failed"
         results.append(entry)

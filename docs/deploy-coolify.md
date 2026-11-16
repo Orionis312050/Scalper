@@ -35,7 +35,7 @@ Les résultats sont écrits dans le volume `./out` (monté dans le compose).
 |---|---|---|
 | GET | `/` | **interface web** (formulaire run) |
 | GET | `/healthz` | sonde de santé |
-| POST | `/run` | pipeline complet (scrape → clean → translate → QA → export) |
+| POST | `/run` | pipeline complet (scrape → clean → translate → QA → export). Champ optionnel `"force": true` : exporte même si la QA échoue (les chapitres concernés sont marqués `"forced": true`) |
 
 ## Sécurité
 - Rate limiting ≥ 1 s entre requêtes vers les sources.

@@ -17,6 +17,22 @@ except ImportError:
     HAS_PIL = False
 
 
+class TestTesseractBoxFormat(unittest.TestCase):
+    def test_box_is_xywh_not_corners(self):
+        from scalper.ocr import TesseractOCR
+
+        data = {
+            "text": ["Hello", "world"], "conf": [90, 85],
+            "block_num": [1, 1], "par_num": [1, 1], "line_num": [1, 1],
+            "left": [100, 140], "top": [50, 52], "width": [30, 40], "height": [20, 18],
+        }
+        with mock.patch("pytesseract.image_to_data", return_value=data):
+            regions = TesseractOCR().recognize(Path("p.png"))
+        self.assertEqual(len(regions), 1)
+        self.assertEqual(regions[0]["box"], [100, 50, 80, 20])  # x, y, w, h
+        self.assertEqual(regions[0]["text"], "Hello world")
+
+
 @unittest.skipUnless(HAS_PIL, "Pillow requis")
 class TestOCRTypeset(unittest.TestCase):
     def _make_image(self, path: Path, size=(300, 120)) -> None:
@@ -102,6 +118,31 @@ class TestOCRTypeset(unittest.TestCase):
         self.assertGreater(fill[2], 200)
         px = img.getpixel((150, 35))
         self.assertGreater(px[0], 150)
+
+    def test_replace_texts_stays_inside_box(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out = Path(tmp) / "p.png", Path(tmp) / "out.png"
+            img = Image.new("RGB", (400, 200), (200, 220, 255))
+            ImageDraw.Draw(img).text((60, 60), "Hi", fill=(0, 0, 0))
+            img.save(src)
+            regions = [{"index": 0, "box": [50, 50, 120, 30], "text": "Hi"}]  # x, y, w, h
+            replace_texts(src, regions, ["Une traduction beaucoup plus longue que l'original"], out)
+            res = Image.open(out).convert("RGB")
+            self.assertEqual(res.getpixel((10, 10)), (200, 220, 255))   # hors boîte : inchangé
+            self.assertEqual(res.getpixel((300, 150)), (200, 220, 255))  # idem
+            dark = any(res.getpixel((px, py))[0] < 100 for px in range(50, 170) for py in range(50, 80))
+            self.assertTrue(dark, "le texte traduit doit être redessiné dans la boîte")
+
+    def test_degenerate_region_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out = Path(tmp) / "p.png", Path(tmp) / "out.png"
+            self._make_image(src)
+            before = Image.open(src).convert("RGB").copy()
+            regions = [{"index": 0, "box": [5, 5, 4, 4], "text": "x"}]  # trop petit = bruit
+            replace_texts(src, regions, ["y"], out)
+            from PIL import ImageChops
+
+            self.assertIsNone(ImageChops.difference(before, Image.open(out).convert("RGB")).getbbox())
 
     def test_pipeline_ocr_typeset_end_to_end(self):
         with tempfile.TemporaryDirectory() as tmp:

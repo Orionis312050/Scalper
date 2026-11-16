@@ -40,20 +40,23 @@ def wrap_text(draw, text: str, font, max_width: int) -> list[str]:
 
 
 def _inpaint(img, box: list[int]) -> tuple[int, int, int]:
-    """Inpainting : la boîte est remplie par la couleur de fond estimée sur l'anneau
-    de pixels juste autour de la boîte (donc hors du texte), et non par la moyenne de
-    la boîte elle-même (qui serait assombrie par le texte). Retourne la couleur RGB
-    de remplissage. Repli : moyenne de la boîte si l'anneau est vide (bord d'image)."""
+    """Inpainting : la boîte (légèrement élargie pour couvrir les bords du texte) est
+    remplie par la couleur de fond estimée sur l'anneau de pixels juste autour (donc hors
+    du texte), et non par la moyenne de la boîte elle-même (assombrie par le texte).
+    Retourne la couleur RGB de remplissage. Repli : moyenne de la boîte si l'anneau est
+    vide (bord d'image)."""
     from PIL import Image
 
     x, y, w, h = box
-    x, y = max(0, x), max(0, y)
-    w, h = min(max(1, w), img.width - x), min(max(1, h), img.height - y)
-    if w <= 0 or h <= 0:
+    pad = max(1, min(w, h) // 10)
+    x0, y0 = max(0, x - pad), max(0, y - pad)
+    x1, y1 = min(img.width, x + w + pad), min(img.height, y + h + pad)
+    w2, h2 = x1 - x0, y1 - y0
+    if w2 <= 0 or h2 <= 0:
         return (255, 255, 255)
-    margin = max(2, min(w, h) // 8)
-    rx0, ry0 = max(0, x - margin), max(0, y - margin)
-    rx1, ry1 = min(img.width, x + w + margin), min(img.height, y + h + margin)
+    margin = max(2, min(w2, h2) // 8)
+    rx0, ry0 = max(0, x0 - margin), max(0, y0 - margin)
+    rx1, ry1 = min(img.width, x1 + margin), min(img.height, y1 + margin)
     ring = img.crop((rx0, ry0, rx1, ry1))
     rw, rh = ring.size
     if rw > 2 and rh > 2:
@@ -73,8 +76,8 @@ def _inpaint(img, box: list[int]) -> tuple[int, int, int]:
             sum(p[2] for p in samples) // n,
         )
     else:
-        fill_rgb = img.crop((x, y, x + w, y + h)).resize((1, 1)).getpixel((0, 0))[:3]
-    img.paste(Image.new("RGB", (w, h), fill_rgb), (x, y))
+        fill_rgb = img.crop((x0, y0, x1, y1)).resize((1, 1)).getpixel((0, 0))[:3]
+    img.paste(Image.new("RGB", (w2, h2), fill_rgb), (x0, y0))
     return fill_rgb
 
 
@@ -102,14 +105,22 @@ def replace_texts(image_path: Path, regions: list[dict[str, Any]], translations:
         if not text or text == r.get("text", "").strip():
             continue
         x, y, w, h = r["box"]
+        if w < 8 or h < 8:
+            continue  # mini-région = bruit OCR
         fill_rgb = _inpaint(img, [x, y, w, h])
         text_fill, stroke_fill = _text_colors(fill_rgb)
         draw = ImageDraw.Draw(img)
-        font_size = max(10, int(h * 0.8))
+        # taille de départ proche du texte original (hauteur de boîte ≈ hauteur de ligne)
+        font_size = max(8, int(h * 0.8))
         font = _load_font(font_size)
         lines = wrap_text(draw, text, font, max(10, w - 8))
-        while font_size > 8 and (font_size + 2) * len(lines) > h:
-            font_size -= 2
+        # on réduit jusqu'à tenir dans la boîte, en largeur ET en hauteur
+        while font_size > 8:
+            too_tall = (font_size + 2) * len(lines) > h
+            too_wide = max(draw.textlength(ln, font=font) for ln in lines) > w - 8
+            if not too_tall and not too_wide:
+                break
+            font_size -= 1
             font = _load_font(font_size)
             lines = wrap_text(draw, text, font, max(10, w - 8))
         line_h = font_size + 2

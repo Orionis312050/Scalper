@@ -39,7 +39,12 @@ class TesseractOCR:
             r["box"][2] = max(r["box"][2], data["left"][i] + data["width"][i])
             r["box"][3] = max(r["box"][3], data["top"][i] + data["height"][i])
             r["text"] = (r["text"] + " " + text).strip()
-        return [dict(v, index=i) for i, v in enumerate(regions.values())]
+        out = []
+        for i, v in enumerate(regions.values()):
+            x0, y0, x1, y1 = v["box"]
+            # format de sortie : [x, y, w, h] (et non [x0, y0, x1, y1])
+            out.append(dict(v, index=i, box=[x0, y0, max(1, x1 - x0), max(1, y1 - y0)]))
+        return out
 
 
 class FakeOCR:

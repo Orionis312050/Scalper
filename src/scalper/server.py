@@ -3,7 +3,7 @@
 Endpoints :
 - GET  /healthz
 - GET  /check-source?source=<url|domaine>
-- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"out"?}
+- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"out"?}
 
 Toutes les requêtes passent par legal-source-check : une source bloquée
 (mangas-origines, keiyoushi.github.io, domaine non déclaré) n'est jamais traitée.
@@ -96,6 +96,7 @@ class Handler(BaseHTTPRequestHandler):
                 mock_llm=bool(body.get("mock_llm", False)),
                 max_chapters=body.get("max_chapters"),
                 group=body.get("group"),
+                with_ocr=bool(body.get("with_ocr", False)),
             )
         except KeyError as e:
             return self._json(400, {"error": f"champ requis manquant: {e}"})

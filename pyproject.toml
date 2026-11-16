@@ -14,6 +14,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 agents = ["mistralai-agents>=1.1"]
+ocr = ["pillow>=10.1", "pytesseract>=0.3.10"]
 
 [project.scripts]
 scalper = "scalper.cli:main"

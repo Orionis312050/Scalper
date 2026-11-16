@@ -26,6 +26,7 @@ def run_pipeline(
     fetcher: RespectfulFetcher | None = None,
     max_chapters: int | None = None,
     group: str | None = None,
+    with_ocr: bool = False,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
     verdict = legal.check_source(source_id)
@@ -73,6 +74,8 @@ def run_pipeline(
             if report["pass"]:
                 for fmt in ("md", "json", "html"):
                     export_chapter(translated, fmt, dest / "export")
+                if with_ocr:
+                    entry["ocr"] = _run_ocr_typeset(dest, meta, lang)
                 state.mark_done(ref.id)
                 entry["status"] = "ok"
             else:
@@ -81,3 +84,19 @@ def run_pipeline(
 
     save_glossary(glossary_path, glossary)
     return {"status": "done", "source": source_id, "series": series_id, "lang": lang, "chapters": results}
+
+
+def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str) -> str:
+    from .ocr import TesseractOCR, ocr_chapter
+    from .typeset import typeset_chapter
+
+    if not legal.allows_derivatives(meta.get("license", "")):
+        return "skipped : licence non dérivable (OCR/typeset réservé domaine public/CC/contenu propre)"
+    if not (dest / "images").exists():
+        return "skipped : aucune image dans ce chapitre"
+    try:
+        ocr_chapter(dest, TesseractOCR(), lang="eng")
+        outs = typeset_chapter(dest, lang)
+        return f"ok ({len(outs)} images reconstituées)"
+    except Exception as e:
+        return f"erreur: {e}"

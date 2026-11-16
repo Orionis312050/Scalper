@@ -105,6 +105,19 @@ def robots_allow(domain: str, path: str = "/") -> tuple[bool, str]:
     return ok, "robots.txt vérifié" if ok else f"robots.txt interdit le chemin {path}"
 
 
+DERIVATIVE_LICENSE_MARKERS = (
+    "domaine public", "public domain", "creative commons", "cc by", "cc0",
+    "contenu propre", "own content",
+)
+
+
+def allows_derivatives(license_str: str) -> bool:
+    """True si la licence autorise les œuvres dérivées (ex. modifier les images :
+    OCR + remplacement du texte = image modifiée). Réservé domaine public / CC / contenu propre."""
+    l = (license_str or "").lower()
+    return any(m in l for m in DERIVATIVE_LICENSE_MARKERS)
+
+
 def check_source(source: str, path: str = "/") -> Verdict:
     """Vérifie une source (id local 'demo' ou URL/domaine)."""
     domain = domain_of(source)

@@ -77,6 +77,15 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("url")
     c.add_argument("--out", default="data")
 
+    c = sub.add_parser("ocr", help="OCR des images d'un chapitre (réservé aux licences dérivables : domaine public/CC/propre)")
+    c.add_argument("chapter_dir")
+    c.add_argument("--lang", default="eng", help="langue OCR (tesseract)")
+    c.add_argument("--mock-ocr", action="store_true")
+
+    c = sub.add_parser("typeset", help="remplace le texte des images par la traduction (licences dérivables uniquement)")
+    c.add_argument("chapter_dir")
+    c.add_argument("--lang", required=True)
+
     c = sub.add_parser("serve", help="démarre le serveur HTTP (déploiement Docker/Coolify)")
     c.add_argument("--host", default="127.0.0.1")
     c.add_argument("--port", type=int, default=8000)
@@ -89,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", default="out")
     c.add_argument("--max-chapters", type=int, default=None)
     c.add_argument("--mock-llm", action="store_true", help="démo hors ligne (LLM factice)")
+    c.add_argument("--with-ocr", action="store_true", help="OCR + remplacement du texte dans les images (licences dérivables uniquement)")
 
     args = p.parse_args(argv)
 
@@ -184,6 +194,27 @@ def main(argv: list[str] | None = None) -> int:
         (dest / "chapter.json").write_text(json.dumps(chapter.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
         _print({"status": "ok", "dest": str(dest), "blocks": len(chapter.blocks), "language": chapter.meta.get("language")})
         return 0
+    if args.cmd == "ocr":
+        from .ocr import FakeOCR, TesseractOCR, ocr_chapter
+
+        meta = json.loads((Path(args.chapter_dir) / "meta.json").read_text(encoding="utf-8"))
+        if not legal.allows_derivatives(meta.get("license", "")):
+            _print({"status": "blocked", "reason": "licence non dérivable : OCR/typeset réservé domaine public/CC/contenu propre"})
+            return 3
+        client = FakeOCR() if args.mock_ocr else TesseractOCR(lang=args.lang)
+        regions = ocr_chapter(Path(args.chapter_dir), client, lang=args.lang)
+        _print({"status": "ok", "regions": len(regions), "out": str(Path(args.chapter_dir) / "ocr.json")})
+        return 0
+    if args.cmd == "typeset":
+        from .typeset import typeset_chapter
+
+        meta = json.loads((Path(args.chapter_dir) / "meta.json").read_text(encoding="utf-8"))
+        if not legal.allows_derivatives(meta.get("license", "")):
+            _print({"status": "blocked", "reason": "licence non dérivable : OCR/typeset réservé domaine public/CC/contenu propre"})
+            return 3
+        outputs = typeset_chapter(Path(args.chapter_dir), args.lang)
+        _print({"status": "ok", "images": outputs})
+        return 0
     if args.cmd == "serve":
         from .server import serve
 
@@ -193,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         summary = pipeline.run_pipeline(
             args.source, args.series, args.lang,
             out_root=Path(args.out), mock_llm=args.mock_llm,
-            max_chapters=args.max_chapters, group=args.group,
+            max_chapters=args.max_chapters, group=args.group, with_ocr=args.with_ocr,
         )
         _print(summary)
         return 0 if summary.get("status") == "done" else 3

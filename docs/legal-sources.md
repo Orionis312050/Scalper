@@ -19,6 +19,13 @@ Scalper ne doit traiter que des contenus pour lesquels une autorisation existe.
 - Toute source dont `robots.txt` interdit le chemin ciblé.
 - Tout contournement de paywall, captcha, authentification ou DRM.
 
+## Œuvres dérivées (OCR + remplacement du texte dans les images)
+Modifier les images d'un chapitre (effacer le texte, redessiner la traduction) crée une **œuvre
+dérivée des images** : réservé aux licences qui l'autorisent — **domaine public, Creative Commons,
+contenus propres** (`legal.allows_derivatives`). La source `mangadex` (images selon la licence
+de chaque œuvre) est **exclue** du traitement d'images. Les commandes `scalper ocr` / `typeset`
+et le flag `--with-ocr` refusent toute source non dérivable.
+
 ## Règles de crawl obligatoires
 - `User-Agent` identifiable (nom du projet + contact).
 - ≥ 1 seconde entre deux requêtes, 1 seule requête concurrente.

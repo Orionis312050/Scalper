@@ -1,0 +1,14 @@
+# Registre de sources personnalisées pour Scalper.
+# Chaque domaine DOIT déclarer sa licence (obligatoire) et passe toujours
+# par robots.txt + liste de blocage (non contournable).
+#
+# Exemple :
+# [source."exemple-domaine-public.fr"]
+# license = "Domaine public (œuvres tombées dans le domaine public)"
+# kind = "html"
+#
+# [source."api.oeuvres-cc.example"]
+# license = "API officielle — contenus Creative Commons CC BY 4.0"
+# kind = "api"
+
+[source]

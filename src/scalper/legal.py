@@ -35,6 +35,32 @@ TRUSTED_SOURCES: dict[str, dict[str, str]] = {
     },
 }
 
+# Sources personnalisées déclarées par l'utilisateur (sources.toml).
+# La liste de blocage a TOUJOURS priorité sur ce registre : aucune config ne
+# peut autoriser un domaine bloqué.
+CUSTOM_SOURCES: dict[str, dict[str, str]] = {}
+
+
+def register_custom_sources(entries: dict[str, dict]) -> None:
+    """Enregistre des sources personnalisées. Champ 'license' obligatoire."""
+    for domain, cfg in entries.items():
+        lic = str(cfg.get("license", "")).strip()
+        if not lic:
+            raise ValueError(
+                f"source '{domain}': le champ 'license' est obligatoire "
+                "(API officielle, CC, domaine public ou contenu propre)"
+            )
+        CUSTOM_SOURCES[domain.lower()] = {"license": lic, "kind": str(cfg.get("kind", "html"))}
+
+
+def load_config(path: str) -> None:
+    """Charge un registre de sources TOML : [source."domaine"] license = "..." kind = "..."."""
+    import tomllib
+    from pathlib import Path
+
+    data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    register_custom_sources(data.get("source", {}))
+
 
 @dataclass
 class Verdict:
@@ -92,14 +118,14 @@ def check_source(source: str, path: str = "/") -> Verdict:
                 license="",
             )
 
-    trusted = TRUSTED_SOURCES.get(domain)
+    trusted = TRUSTED_SOURCES.get(domain) or CUSTOM_SOURCES.get(domain)
     if trusted is None:
         return Verdict(
             source=source,
             verdict="blocked",
             reasons=[
-                "source non enregistrée : ajoutez-la manuellement dans TRUSTED_SOURCES "
-                "avec sa licence après vérification (robots.txt, CGU, licence CC/domaine public/API officielle)"
+                "source non enregistrée : déclarez-la dans sources.toml (champ 'license' obligatoire) "
+                "après vérification manuelle (robots.txt, CGU, licence CC/domaine public/API officielle)"
             ],
             license="",
         )

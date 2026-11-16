@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from . import legal, pipeline
 from .cleaner import clean_chapter
-from .exporter import export_chapter
+from .exporter import export_chapter, slugify
 from .models import Chapter
 from .qa import qa_chapter
 from .scraper import RespectfulFetcher, chapter_dir
@@ -23,6 +24,7 @@ def _print(data: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="scalper", description="Pipeline légal de scraping + traduction de chapitres manga/webtoon")
+    p.add_argument("--config", default=None, help="registre de sources personnalisées (TOML, ex. sources.example.toml)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("check-source", help="valide une source (robots.txt, licence, liste de blocage)")
@@ -71,6 +73,10 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--format", choices=["md", "json", "html"], required=True)
     c.add_argument("--out", required=True)
 
+    c = sub.add_parser("fetch-url", help="récupère un lien direct (soumis à legal-source-check : licence déclarée + robots.txt + liste de blocage)")
+    c.add_argument("url")
+    c.add_argument("--out", default="data")
+
     c = sub.add_parser("run", help="pipeline complet end-to-end")
     c.add_argument("--source", required=True)
     c.add_argument("--series", required=True)
@@ -81,6 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--mock-llm", action="store_true", help="démo hors ligne (LLM factice)")
 
     args = p.parse_args(argv)
+
+    if getattr(args, "config", None):
+        legal.load_config(args.config)
 
     if args.cmd == "check-source":
         _print(legal.check_source(args.source).to_dict())
@@ -148,6 +157,28 @@ def main(argv: list[str] | None = None) -> int:
         chapter = Chapter.from_dict(json.loads(Path(args.chapter_json).read_text(encoding="utf-8")))
         path = export_chapter(chapter, args.format, Path(args.out))
         _print({"exported": str(path)})
+        return 0
+    if args.cmd == "fetch-url":
+        verdict = legal.check_source(args.url)
+        if not verdict.allowed:
+            _print({"status": "blocked", "verdict": verdict.to_dict()})
+            return 3
+        fetcher = RespectfulFetcher()
+        html = fetcher.get(args.url).decode("utf-8", errors="replace")
+        domain = legal.domain_of(args.url)
+        dest = Path(args.out) / "raw" / domain / slugify(args.url)
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "raw.html").write_text(html, encoding="utf-8")
+        meta = {
+            "source": domain,
+            "license": verdict.license,
+            "url": args.url,
+            "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        (dest / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        chapter = clean_chapter(html, meta)
+        (dest / "chapter.json").write_text(json.dumps(chapter.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        _print({"status": "ok", "dest": str(dest), "blocks": len(chapter.blocks), "language": chapter.meta.get("language")})
         return 0
     if args.cmd == "run":
         summary = pipeline.run_pipeline(

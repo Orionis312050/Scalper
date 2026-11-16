@@ -34,6 +34,7 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 | `scalper check-source <url>` | verdict légal (allowed/blocked + raisons) |
 | `scalper list-series <source>` / `list-chapters <source> <series> [--group Keiyoushi]` | catalogage (filtre par groupe via API MangaDex) |
 | `scalper list-groups mangadex --query Keiyoushi` | recherche de groupes de scanlation (API officielle) |
+| `scalper --config sources.toml fetch-url <url>` | lien direct (gate légal : licence déclarée + robots.txt + blocage) |
 | `scalper fetch <source> <series> <chapitre>` | téléchargement brut + `state.json` (reprise) |
 | `scalper clean <raw.html> --out chapter.json` | nettoyage/structuration en blocs typés |
 | `scalper translate <chapter.json> --lang fr [--mock-llm]` | traduction LLM + glossaire |
@@ -53,7 +54,11 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 
 ## Ajouter une source légale
 
-Voir [docs/add-a-source.md](docs/add-a-source.md) et la politique des sources légales :
+Voir [docs/add-a-source.md](docs/add-a-source.md) : registre déclaratif `sources.toml`
+(licence obligatoire par domaine) ou lien direct `fetch-url`, plus adaptateur dédié.
+La liste de blocage (mangas-origines, keiyoushi.github.io…) n'est **pas contournable**.
+
+## Politique des sources légales
 [docs/legal-sources.md](docs/legal-sources.md).
 
 ## Tests & CI

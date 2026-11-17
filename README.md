@@ -55,12 +55,12 @@ ajoute ex. `tesseract-ocr-fra` / `tesseract-ocr-jpn` dans le `Dockerfile` pour d
 | Moteur | Gratuit | Local | Qualité bulles/stylisé | Install |
 |---|---|---|---|---|
 | `tesseract` (défaut) | oui | oui | moyenne | déjà dans l'image Docker |
-| `paddle` (PaddleOCR) | oui | oui | **meilleure** (PP-OCRv6) | `pip install -e ".[ocr-paddle]"`, puis `SCALPER_OCR_ENGINE=paddle` |
+| `paddle` (PaddleOCR) | oui | oui | **meilleure** (PP-OCRv6) | déjà dans l'image Docker (`[ocr,ocr-paddle]`), puis `SCALPER_OCR_ENGINE=paddle` |
 
 Mistral OCR (API `mistral-ocr-*`) n'est **pas gratuit** (facturé à la page) : non retenu par défaut.
-PaddleOCR : `pip install -e ".[ocr-paddle"]` ; dans le conteneur, remplace `".[ocr]"` par
-`".[ocr-paddle]"` dans le `Dockerfile` (les wheels Paddle sont prévues pour Linux ; sur Windows en
-local, préférez le conteneur Docker).
+PaddleOCR : l'image Docker embarque déjà les deux moteurs (`pip install ".[ocr,ocr-paddle]"` dans le
+`Dockerfile`, sélection par `SCALPER_OCR_ENGINE`). Hors Docker : `pip install -e ".[ocr-paddle]"`
+(les wheels Paddle sont prévues pour Linux ; sur Windows en local, préférez le conteneur Docker).
 
 Commandes manuelles : `scalper ocr <chapter_dir> [--mock-ocr]` et `scalper typeset <chapter_dir> --lang fr`.
 

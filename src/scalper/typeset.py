@@ -5,6 +5,7 @@ de la traduction (Pillow uniquement).
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -159,4 +160,12 @@ def typeset_chapter(chapter_dir: Path, lang: str, ocr_file: str = "ocr.json", tr
         src = images_dir / name
         if src.exists():
             outputs.append(str(replace_texts(src, regions, translations, out_dir / name)))
+    # pages sans texte détecté : copiées telles quelles pour un export complet
+    for p in sorted(images_dir.iterdir()):
+        if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") and p.name not in by_image:
+            out = out_dir / p.name
+            if not out.exists():
+                out_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(p, out)
+                outputs.append(str(out))
     return outputs

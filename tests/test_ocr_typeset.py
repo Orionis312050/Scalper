@@ -199,9 +199,11 @@ class TestOCRTypeset(unittest.TestCase):
                 json.dumps({"lang": "eng", "regions": [{"index": 0, "image": "p1.png", "box": [10, 10, 280, 60], "text": "Hello world"}]}),
                 encoding="utf-8",
             )
+            self._make_image(d / "images" / "p2.png", size=(200, 100))  # sans région OCR
             outputs = typeset_chapter(d, "fr", translations=["Bonjour le monde"])
-            self.assertEqual(len(outputs), 1)
+            self.assertEqual(len(outputs), 2)
             self.assertTrue((d / "export" / "images-fr" / "p1.png").exists())
+            self.assertTrue((d / "export" / "images-fr" / "p2.png").exists(), "page sans texte copiée telle quelle")
 
     def test_inpaint_uses_background_ring_not_text(self):
         img = Image.new("RGB", (300, 120), (200, 220, 255))

@@ -58,8 +58,11 @@ def init_auth(host: str = "127.0.0.1", port: int = 8000) -> None:
     global SETUP_TOKEN
     if _load_account() is None and SETUP_TOKEN is None:
         SETUP_TOKEN = secrets.token_urlsafe(24)
+        display = host if host not in ("0.0.0.0", "::", "") else "<hote-du-serveur>"
         print("[scalper] aucun compte trouvé (premier démarrage).")
-        print(f"[scalper] lien de création de compte (usage unique) : http://{host}:{port}/setup?token={SETUP_TOKEN}")
+        print(f"[scalper] lien de création de compte (usage unique) : http://{display}:{port}/setup?token={SETUP_TOKEN}")
+        if display == "<hote-du-serveur>":
+            print(f"[scalper] remplacez <hote-du-serveur> par l'IP ou le nom d'hôte réel (port {port} publié par docker-compose).")
         print("[scalper] ce lien est invalidé dès que le compte est créé.")
 
 

@@ -71,7 +71,10 @@ dans les logs du conteneur : `http://<host>:<port>/setup?token=...`. Une fois le
 est invalidé. Ensuite, `POST /login` `{"username": ..., "password": ...}` renvoie un token de session
 (8 h), à passer en header `Authorization: Bearer <token>` sur tous les endpoints (sauf `/`, `/healthz`,
 `/login`, `/setup`). Le compte est stocké dans `SCALPER_AUTH_FILE` (défaut `data/auth.json`, monté par
-docker-compose), mot de passe haché (PBKDF2).
+docker-compose), mot de passe haché (PBKDF2). En conteneur (`--host 0.0.0.0`), le lien est
+affiché avec `<hote-du-serveur>` à remplacer par l'IP/hôte réel. Le cache PaddleX (modèles OCR,
+temp) est redirigé vers `/app/data/.paddlex` via `PADDLE_PDX_CACHE_HOME` dans `entrypoint.sh` :
+les modèles ne sont téléchargés qu'une fois, dans le volume monté.
 
 `POST /run` accepte en plus `"src_lang": "ja"` (langue d'entrée du chapitre).
 

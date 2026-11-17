@@ -72,6 +72,20 @@ class TestServer(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read())
 
+    def test_init_auth_wildcard_host_shows_placeholder(self):
+        import io
+        from contextlib import redirect_stdout
+
+        server_mod.SETUP_TOKEN = None
+        buf = io.StringIO()
+        with mock.patch.object(server_mod, "AUTH_FILE", Path(self.tmpdir.name) / "autre.json"):
+            with redirect_stdout(buf):
+                server_mod.init_auth("0.0.0.0", 8000)
+        out = buf.getvalue()
+        server_mod.SETUP_TOKEN = None
+        self.assertIn("<hote-du-serveur>:8000/setup?token=", out)
+        self.assertNotIn("http://0.0.0.0:8000/setup", out)
+
     def test_healthz_public(self):
         status, body = self._get("/healthz", auth=False)
         self.assertEqual(status, 200)

@@ -27,7 +27,7 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 | `scalper list-groups mangadex --query Keiyoushi` | recherche de groupes de traduction (API MangaDex) |
 | `scalper fetch-url <url>` | lien direct → `raw.html` + `meta.json` + `chapter.json` |
 | `scalper ocr <chapter_dir> [--mock-ocr]` | OCR des images (tesseract) → `ocr.json` |
-| `scalper typeset <chapter_dir> --lang fr` | remplace le texte des images par la traduction → `export/images-fr/` |
+| `scalper typeset <chapter_dir> --lang fr [--inpaint-engine lama]` | remplace le texte des images par la traduction → `export/images-fr/` |
 | `scalper run ... --no-ocr` | désactive l'OCR/typeset (actif par défaut si images présentes) |
 | `scalper fetch <source> <series> <chapitre>` | téléchargement brut + `state.json` (reprise) |
 | `scalper clean <raw.html> --out chapter.json` | nettoyage/structuration en blocs typés |
@@ -40,11 +40,10 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 
 Dans `scalper run` (et `POST /run`), l'OCR + typesetting s'exécute **automatiquement** dès qu'un
 chapitre contient des images (désactivable avec `--no-ocr` / `"with_ocr": false`) :
-Tesseract (`pytesseract`, binaire installé dans l'image Docker) extrait les régions texte des
-images (`ocr.json`), chaque texte détecté est traduit par le LLM, puis `typeset` efface le texte
-original (inpainting : remplissage par la couleur de fond estimée sur l'anneau de pixels autour de
-la bulle) et redessine la traduction au même endroit, centrée, avec une couleur contrastée avec le
-fond (Pillow). Résultat : `export/images-<lang>/`.
+l'OCR extrait les régions texte des images (`ocr.json`, avec le quadrilatère `poly` quand le moteur
+le fournit — PaddleOCR), chaque texte détecté est traduit par le LLM, puis `typeset` efface le texte
+original (**inpainting**, voir moteurs ci-dessous) et redessine la traduction au même endroit,
+centrée, avec une couleur contrastée avec le fond (Pillow). Résultat : `export/images-<lang>/`.
 
 La langue source de l'OCR est déduite de la langue détectée du chapitre (`en→eng`, `fr→fra`,
 `ja→jpn`…). L'image Docker n'embarque que `eng` (`tesseract-ocr` inclut `tesseract-ocr-eng`) :
@@ -65,7 +64,27 @@ PaddleOCR : l'image Docker embarque déjà les deux moteurs (`pip install ".[ocr
 (`ConvertPirAttribute2RuntimeAttribute ... ArrayAttribute<DoubleAttribute>`, Paddle#79749) —
 vérifié localement : 3.3.1 crashe, 3.2.2 fonctionne.
 
-Commandes manuelles : `scalper ocr <chapter_dir> [--mock-ocr]` et `scalper typeset <chapter_dir> --lang fr`.
+Commandes manuelles : `scalper ocr <chapter_dir> [--mock-ocr]` et `scalper typeset <chapter_dir> --lang fr [--inpaint-engine lama]`.
+
+**Moteurs d'inpainting** (protocol `Inpainter` dans `src/scalper/inpaint.py`, sélection par
+`SCALPER_INPAINT_ENGINE` ou `--inpaint-engine`, et `"inpaint_engine"` dans `POST /run`) :
+
+| Moteur | Gratuit | Local | Qualité suppression texte | Install |
+|---|---|---|---|---|
+| `simple` | oui | oui | basique (remplissage par la couleur de fond estimée sur l'anneau autour de la boîte) | inclus (`[ocr]`) |
+| `lama` | oui | oui | **bien meilleure** : big-lama [advimman/lama](https://github.com/advimman/lama) (Apache-2.0), inférence ONNX CPU | `.[inpaint-lama]` (dans l'image Docker) |
+| `auto` (défaut) | — | — | `lama` si onnxruntime est installé, sinon `simple` | — |
+
+LaMa : le graphe ONNX (`lama_fp32.onnx`, 208 Mo, port [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX)
+du modèle big-lama, entrée fixe 512×512) est téléchargé **une seule fois** au premier run, sha256
+vérifié, dans `SCALPER_LAMA_CACHE` (défaut `~/.cache/scalper/lama` ; `/app/data/.lama` dans le
+conteneur via `entrypoint.sh`, donc dans le volume monté). `SCALPER_LAMA_MODEL` permet de pointer
+directement vers un fichier `.onnx` local. Pour chaque région de texte, Scalper découpe un crop
+carré avec contexte autour de la boîte, le redimensionne en 512×512, construit le masque (polygone
+OCR `poly` si présent, sinon rectangle dilaté de 10 %), infère, puis ne recolle que les pixels
+masqués à la résolution d'origine : le reste de la page est **inchangé**. Comptez ~2 s par région
+en CPU (une page de 20 bulles ≈ 45 s). La réinsertion du texte traduit reste faite par Pillow
+(retypographie centrée dans la boîte d'origine).
 
 ## Serveur & authentification (`scalper serve`)
 
@@ -76,10 +95,12 @@ est invalidé. Ensuite, `POST /login` `{"username": ..., "password": ...}` renvo
 `/login`, `/setup`). Le compte est stocké dans `SCALPER_AUTH_FILE` (défaut `data/auth.json`, monté par
 docker-compose), mot de passe haché (PBKDF2). En conteneur (`--host 0.0.0.0`), le lien est
 affiché avec `<hote-du-serveur>` à remplacer par l'IP/hôte réel. Le cache PaddleX (modèles OCR,
-temp) est redirigé vers `/app/data/.paddlex` via `PADDLE_PDX_CACHE_HOME` dans `entrypoint.sh` :
+temp) est redirigé vers `/app/data/.paddlex` via `PADDLE_PDX_CACHE_HOME` dans `entrypoint.sh`,
+et celui du modèle LaMa vers `/app/data/.lama` via `SCALPER_LAMA_CACHE` :
 les modèles ne sont téléchargés qu'une fois, dans le volume monté.
 
-`POST /run` accepte en plus `"src_lang": "ja"` (langue d'entrée du chapitre).
+`POST /run` accepte en plus `"src_lang": "ja"` (langue d'entrée du chapitre) et
+`"inpaint_engine": "lama"` (moteur d'inpainting : `simple` | `lama` | `auto`).
 
 ## Architecture
 

@@ -9,4 +9,6 @@ export HOME=/home/scalper
 # Cache PaddleX (modèles OCR + temp) dans le volume monté /app/data :
 # les modèles ne sont téléchargés qu'une seule fois, même après recréation du conteneur.
 export PADDLE_PDX_CACHE_HOME=/app/data/.paddlex
+# Idem pour le modèle LaMa d'inpainting (big-lama ONNX, ~208 Mo, téléchargé au premier run).
+export SCALPER_LAMA_CACHE=/app/data/.lama
 exec setpriv --reuid scalper --regid scalper --init-groups "$@"

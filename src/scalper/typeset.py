@@ -1,5 +1,5 @@
-"""Remplacement du texte dans les images : inpainting de la bulle + retypographie
-de la traduction (Pillow uniquement).
+"""Remplacement du texte dans les images : inpainting de la bulle (voir inpaint.py :
+remplissage simple ou LaMa) + retypographie de la traduction (Pillow).
 """
 
 from __future__ import annotations
@@ -40,48 +40,6 @@ def wrap_text(draw, text: str, font, max_width: int) -> list[str]:
     return lines or [""]
 
 
-def _inpaint(img, box: list[int]) -> tuple[int, int, int]:
-    """Inpainting : la boîte (légèrement élargie pour couvrir les bords du texte) est
-    remplie par la couleur de fond estimée sur l'anneau de pixels juste autour (donc hors
-    du texte), et non par la moyenne de la boîte elle-même (assombrie par le texte).
-    Retourne la couleur RGB de remplissage. Repli : moyenne de la boîte si l'anneau est
-    vide (bord d'image)."""
-    from PIL import Image
-
-    x, y, w, h = box
-    pad = max(1, min(w, h) // 10)
-    x0, y0 = max(0, x - pad), max(0, y - pad)
-    x1, y1 = min(img.width, x + w + pad), min(img.height, y + h + pad)
-    w2, h2 = x1 - x0, y1 - y0
-    if w2 <= 0 or h2 <= 0:
-        return (255, 255, 255)
-    margin = max(2, min(w2, h2) // 8)
-    rx0, ry0 = max(0, x0 - margin), max(0, y0 - margin)
-    rx1, ry1 = min(img.width, x1 + margin), min(img.height, y1 + margin)
-    ring = img.crop((rx0, ry0, rx1, ry1))
-    rw, rh = ring.size
-    if rw > 2 and rh > 2:
-        px = ring.load()
-        samples = []
-        step = max(1, (rw + rh) // 400)
-        for i in range(0, rw, step):
-            samples.append(px[i, 0])
-            samples.append(px[i, rh - 1])
-        for j in range(0, rh, step):
-            samples.append(px[0, j])
-            samples.append(px[rw - 1, j])
-        n = len(samples)
-        fill_rgb = (
-            sum(p[0] for p in samples) // n,
-            sum(p[1] for p in samples) // n,
-            sum(p[2] for p in samples) // n,
-        )
-    else:
-        fill_rgb = img.crop((x0, y0, x1, y1)).resize((1, 1)).getpixel((0, 0))[:3]
-    img.paste(Image.new("RGB", (w2, h2), fill_rgb), (x0, y0))
-    return fill_rgb
-
-
 def _text_colors(fill_rgb: tuple[int, int, int]) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     """Couleur de texte + contour contrastées avec le fond (luminance)."""
     lum = 0.299 * fill_rgb[0] + 0.587 * fill_rgb[1] + 0.114 * fill_rgb[2]
@@ -90,14 +48,29 @@ def _text_colors(fill_rgb: tuple[int, int, int]) -> tuple[tuple[int, int, int], 
     return (255, 255, 255), (0, 0, 0)
 
 
-def replace_texts(image_path: Path, regions: list[dict[str, Any]], translations: list[str], out_path: Path) -> Path:
-    """Remplace le texte des `regions` (index → translations[index]) dans l'image."""
+def replace_texts(
+    image_path: Path,
+    regions: list[dict[str, Any]],
+    translations: list[str],
+    out_path: Path,
+    inpainter=None,
+) -> Path:
+    """Remplace le texte des `regions` (index → translations[index]) dans l'image.
+
+    Phase 1 : `inpainter` (défaut `default_inpainter()`) efface le texte original de
+    toutes les régions à traduire (remplissage simple ou inpainting LaMa) ; phase 2 :
+    la traduction est redessinée par-dessus, centrée dans la boîte d'origine.
+    """
     from PIL import Image, ImageDraw
+
+    from .inpaint import default_inpainter, estimate_bg_color
 
     # Les pages manga peuvent être très grandes : on désactive la limite
     # anti-decompression-bomb de PIL (les images viennent de nos propres chapitres).
     Image.MAX_IMAGE_PIXELS = None
     img = Image.open(image_path).convert("RGB")
+    inpainter = inpainter or default_inpainter()
+    todo: list[tuple[dict[str, Any], str]] = []
     for r in regions:
         i = r.get("index")
         if i is None or i >= len(translations):
@@ -108,9 +81,14 @@ def replace_texts(image_path: Path, regions: list[dict[str, Any]], translations:
         x, y, w, h = r["box"]
         if w < 8 or h < 8:
             continue  # mini-région = bruit OCR
-        fill_rgb = _inpaint(img, [x, y, w, h])
+        todo.append((r, text))
+    if todo:
+        img = inpainter.inpaint_image(img, [r for r, _ in todo]).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    for r, text in todo:
+        x, y, w, h = r["box"]
+        fill_rgb = estimate_bg_color(img, [x, y, w, h])
         text_fill, stroke_fill = _text_colors(fill_rgb)
-        draw = ImageDraw.Draw(img)
         # taille de départ proche du texte original (hauteur de boîte ≈ hauteur de ligne)
         font_size = max(8, int(h * 0.8))
         font = _load_font(font_size)
@@ -136,12 +114,20 @@ def replace_texts(image_path: Path, regions: list[dict[str, Any]], translations:
     return out_path
 
 
-def typeset_chapter(chapter_dir: Path, lang: str, ocr_file: str = "ocr.json", translations: list[str] | None = None) -> list[str]:
+def typeset_chapter(
+    chapter_dir: Path,
+    lang: str,
+    ocr_file: str = "ocr.json",
+    translations: list[str] | None = None,
+    inpainter=None,
+) -> list[str]:
     """Recrée les images avec le texte traduit → `export/images-<lang>/`.
 
     Si `translations` est fourni (une traduction par région OCR, dans l'ordre), il est
     utilisé directement ; sinon les blocs texte de `chapter.<lang>.json` servent de
-    traductions (indexés par ordre des régions)."""
+    traductions (indexés par ordre des régions). `inpainter` (défaut
+    `default_inpainter()`) gère la suppression du texte original avant retypographie.
+    """
     ocr = json.loads((chapter_dir / ocr_file).read_text(encoding="utf-8"))
     if translations is None:
         from .models import Chapter
@@ -159,7 +145,7 @@ def typeset_chapter(chapter_dir: Path, lang: str, ocr_file: str = "ocr.json", tr
     for name, regions in sorted(by_image.items()):
         src = images_dir / name
         if src.exists():
-            outputs.append(str(replace_texts(src, regions, translations, out_dir / name)))
+            outputs.append(str(replace_texts(src, regions, translations, out_dir / name, inpainter=inpainter)))
     # pages sans texte détecté : copiées telles quelles pour un export complet
     for p in sorted(images_dir.iterdir()):
         if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") and p.name not in by_image:

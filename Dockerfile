@@ -10,7 +10,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN pip install --no-cache-dir ".[ocr,ocr-paddle]"
+RUN pip install --no-cache-dir ".[ocr,ocr-paddle,inpaint-lama]"
 
 RUN useradd -m scalper && mkdir -p /app/data /app/out && chown -R scalper:scalper /app
 

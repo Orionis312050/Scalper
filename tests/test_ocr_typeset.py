@@ -8,9 +8,10 @@ from pathlib import Path
 from unittest import mock
 
 from scalper import pipeline
+from scalper.inpaint import _inpaint
 from scalper.ocr import FakeOCR, ocr_chapter
 from scalper.translator import FakeLLM
-from scalper.typeset import _inpaint, replace_texts, typeset_chapter, wrap_text
+from scalper.typeset import replace_texts, typeset_chapter, wrap_text
 
 try:
     from PIL import Image, ImageDraw
@@ -60,6 +61,8 @@ class TestPaddleOCRMapping(unittest.TestCase):
         self.assertEqual(regions[0]["box"], [100, 50, 30, 20])  # x, y, w, h
         self.assertEqual(regions[0]["text"], "Hello")
         self.assertEqual(regions[0]["index"], 0)
+        # quadrilatère conservé pour le masque d'inpainting LaMa
+        self.assertEqual(regions[0]["poly"], [[100, 50], [130, 50], [130, 70], [100, 70]])
 
     def test_recognize_tolerates_array_like_fields(self):
         """rec_boxes/dt_polys peuvent être des ndarray : `x or y` crashe (truth value ambigu)."""

@@ -116,6 +116,8 @@ class PaddleOCR:
                     "image": image_path.name,
                     "box": [int(x0), int(y0), max(1, int(x1 - x0)), max(1, int(y1 - y0))],
                     "text": text,
+                    # quadrilatère du texte : masque plus fidèle pour l'inpainting LaMa
+                    "poly": [[int(px), int(py)] for px, py in poly],
                 })
         for i, r in enumerate(regions):
             r["index"] = i

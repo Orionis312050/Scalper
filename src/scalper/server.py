@@ -3,7 +3,7 @@
 Endpoints :
 - GET  /healthz
 - GET  /            interface web (barre de progression + previews source/traduit)
-- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"force"?,"out"?,"background"?}
+- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"inpaint_engine"?,"force"?,"out"?,"background"?}
              avec "background": true -> 202 {"job": id} et le run tourne en thread
 - GET  /jobs/<id>  état du job {status, progress{done,total,current}, result, error}
 - GET  /api/chapter?out=&source=&series=&chapter=&lang=  données de preview (meta, blocs source/traduits, images)
@@ -104,6 +104,7 @@ def _start_job(body: dict) -> str:
                 with_ocr=bool(body.get("with_ocr", True)),
                 force=bool(body.get("force", False)),
                 src_lang=body.get("src_lang"),
+                inpaint_engine=body.get("inpaint_engine"),
                 on_progress=on_progress,
             )
             job["result"] = summary
@@ -412,6 +413,7 @@ class Handler(BaseHTTPRequestHandler):
                 with_ocr=bool(body.get("with_ocr", True)),
                 force=bool(body.get("force", False)),
                 src_lang=body.get("src_lang"),
+                inpaint_engine=body.get("inpaint_engine"),
             )
         except KeyError as e:
             return self._json(400, {"error": f"champ requis manquant: {e}"})

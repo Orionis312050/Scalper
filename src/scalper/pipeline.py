@@ -30,6 +30,7 @@ def run_pipeline(
     force: bool = False,
     on_progress: Callable[[int, int, Any], None] | None = None,
     src_lang: str | None = None,
+    inpaint_engine: str | None = None,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
     fetcher = fetcher or RespectfulFetcher(min_delay=1.0)
@@ -76,7 +77,7 @@ def run_pipeline(
                 for fmt in ("md", "json", "html"):
                     export_chapter(translated, fmt, dest / "export")
                 if with_ocr:
-                    entry["ocr"] = _run_ocr_typeset(dest, meta, lang, client, glossary)
+                    entry["ocr"] = _run_ocr_typeset(dest, meta, lang, client, glossary, inpaint_engine=inpaint_engine)
                 state.mark_done(ref.id)
                 entry["status"] = "ok"
                 if not report["pass"]:
@@ -98,9 +99,12 @@ _TESSERACT_LANGS = {
 }
 
 
-def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMClient, glossary: dict[str, str]) -> str:
+def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMClient, glossary: dict[str, str],
+                     inpaint_engine: str | None = None) -> str:
     """OCR des images du chapitre, traduction des textes détectés via le LLM, puis
-    remplacement dans les images (inpainting + retypographie) -> export/images-<lang>/."""
+    remplacement dans les images (inpainting + retypographie) -> export/images-<lang>/.
+    `inpaint_engine` : moteur d'inpainting (simple|lama|auto, défaut SCALPER_INPAINT_ENGINE)."""
+    from .inpaint import default_inpainter
     from .ocr import default_ocr_client, ocr_chapter
     from .typeset import typeset_chapter
 
@@ -120,7 +124,8 @@ def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMCli
             blocks=[Block(index=i, type="narration", text=r.get("text", "")) for i, r in enumerate(regions)],
         )
         translated = translate_chapter(ocr_chapter_src, lang, glossary, client)
-        outs = typeset_chapter(dest, lang, translations=[b.text for b in translated.blocks])
+        outs = typeset_chapter(dest, lang, translations=[b.text for b in translated.blocks],
+                               inpainter=default_inpainter(inpaint_engine))
         return f"ok ({len(outs)} images reconstituées, {len(regions)} textes remplacés)"
     except Exception as e:
         print(f"[scalper][ocr] {dest.name} ERREUR: {e}", file=sys.stderr)

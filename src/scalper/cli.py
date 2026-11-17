@@ -85,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("typeset", help="remplace le texte des images par la traduction")
     c.add_argument("chapter_dir")
     c.add_argument("--lang", required=True)
+    c.add_argument("--inpaint-engine", choices=["simple", "lama", "auto"], default=None,
+                   help="moteur d'inpainting pour la suppression du texte (défaut: SCALPER_INPAINT_ENGINE ou auto)")
 
     c = sub.add_parser("serve", help="démarre le serveur HTTP (déploiement Docker/Coolify)")
     c.add_argument("--host", default="127.0.0.1")
@@ -102,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="OCR + remplacement du texte dans les images (auto si images présentes ; --no-ocr pour désactiver)")
     c.add_argument("--ocr-engine", choices=["tesseract", "paddle"], default=None,
                    help="moteur OCR (défaut: SCALPER_OCR_ENGINE ou tesseract)")
+    c.add_argument("--inpaint-engine", choices=["simple", "lama", "auto"], default=None,
+                   help="moteur d'inpainting pour la suppression du texte (défaut: SCALPER_INPAINT_ENGINE ou auto)")
     c.add_argument("--force", action="store_true", help="exporte même si la QA échoue (bypass vérification)")
     c.add_argument("--src-lang", default=None, help="langue d'entrée du chapitre (en, ja, fr…) : enregistrée dans meta.json et utilisée pour l'OCR")
 
@@ -198,9 +202,13 @@ def main(argv: list[str] | None = None) -> int:
         _print({"status": "ok", "regions": len(regions), "out": str(Path(args.chapter_dir) / "ocr.json")})
         return 0
     if args.cmd == "typeset":
+        from .inpaint import default_inpainter
         from .typeset import typeset_chapter
 
-        outputs = typeset_chapter(Path(args.chapter_dir), args.lang)
+        if args.inpaint_engine:
+            os.environ["SCALPER_INPAINT_ENGINE"] = args.inpaint_engine
+        outputs = typeset_chapter(Path(args.chapter_dir), args.lang,
+                                  inpainter=default_inpainter(args.inpaint_engine))
         _print({"status": "ok", "images": outputs})
         return 0
     if args.cmd == "serve":
@@ -211,11 +219,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "run":
         if getattr(args, "ocr_engine", None):
             os.environ["SCALPER_OCR_ENGINE"] = args.ocr_engine
+        if getattr(args, "inpaint_engine", None):
+            os.environ["SCALPER_INPAINT_ENGINE"] = args.inpaint_engine
         summary = pipeline.run_pipeline(
             args.source, args.series, args.lang,
             out_root=Path(args.out), mock_llm=args.mock_llm,
             max_chapters=args.max_chapters, group=args.group, with_ocr=args.with_ocr,
-            force=args.force, src_lang=args.src_lang,
+            force=args.force, src_lang=args.src_lang, inpaint_engine=args.inpaint_engine,
         )
         _print(summary)
         return 0 if summary.get("status") == "done" else 3

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "scalper"
 version = "0.1.0"
-description = "Pipeline de scraping légal et de traduction de chapitres manga/webtoon (sources autorisées uniquement)"
+description = "Pipeline de scraping et de traduction de chapitres manga/webtoon"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -14,6 +14,8 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 agents = ["mistralai-agents>=1.1"]
+ocr = ["pillow>=10.1", "pytesseract>=0.3.10"]
+ocr-paddle = ["paddlepaddle>=3.0", "paddleocr>=3.0"]
 
 [project.scripts]
 scalper = "scalper.cli:main"

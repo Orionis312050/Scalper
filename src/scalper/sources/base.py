@@ -7,14 +7,13 @@ from ..models import ChapterRef, Series
 
 
 class SourceAdapter(Protocol):
-    """Contrat d'un adaptateur de source légale."""
+    """Contrat d'un adaptateur de source."""
 
     id: str
-    license: str
 
     def list_series(self) -> list[Series]: ...
 
-    def list_chapters(self, series_id: str) -> list[ChapterRef]: ...
+    def list_chapters(self, series_id: str, **kwargs) -> list[ChapterRef]: ...
 
     def fetch_chapter(self, chapter: ChapterRef, dest_dir: Path) -> None:
         """Télécharge le chapitre brut (HTML + images) dans dest_dir."""

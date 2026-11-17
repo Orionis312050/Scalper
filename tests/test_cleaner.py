@@ -7,7 +7,7 @@ from scalper.cleaner import clean_chapter, detect_language
 class TestCleaner(unittest.TestCase):
     def setUp(self):
         raw = (resources.files("scalper") / "data" / "demo" / "chapter-1.html").read_text(encoding="utf-8")
-        self.chapter = clean_chapter(raw, {"source": "demo", "license": "fixture"})
+        self.chapter = clean_chapter(raw, {"source": "demo"})
 
     def test_boilerplate_removed(self):
         text = self.chapter.full_text().lower()

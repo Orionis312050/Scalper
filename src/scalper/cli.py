@@ -1,15 +1,18 @@
-"""CLI Scalper : check-source, list-series, list-chapters, fetch, clean, translate, qa, export, run."""
+"""CLI Scalper : list-series, list-groups, list-chapters, fetch, fetch-url, clean, translate, qa, export, ocr, typeset, serve, run."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import time
 from pathlib import Path
+from urllib.parse import urlparse
 
-from . import legal, pipeline
+from . import pipeline
 from .cleaner import clean_chapter
-from .exporter import export_chapter
+from .exporter import export_chapter, slugify
 from .models import Chapter
 from .qa import qa_chapter
 from .scraper import RespectfulFetcher, chapter_dir
@@ -22,18 +25,22 @@ def _print(data: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="scalper", description="Pipeline légal de scraping + traduction de chapitres manga/webtoon")
+    p = argparse.ArgumentParser(prog="scalper", description="Pipeline de scraping + traduction de chapitres manga/webtoon")
     sub = p.add_subparsers(dest="cmd", required=True)
-
-    c = sub.add_parser("check-source", help="valide une source (robots.txt, licence, liste de blocage)")
-    c.add_argument("source")
 
     c = sub.add_parser("list-series", help="liste les séries d'une source")
     c.add_argument("source")
+    c.add_argument("--query", default="")
 
-    c = sub.add_parser("list-chapters", help="liste les chapitres d'une série")
+    c = sub.add_parser("list-groups", help="liste les groupes de traduction (source mangadex uniquement)")
+    c.add_argument("source")
+    c.add_argument("--query", default="")
+
+    c = sub.add_parser("list-chapters", help="liste les chapitres d'une série (--group pour filtrer par groupe, ex. Keiyoushi)")
     c.add_argument("source")
     c.add_argument("series")
+    c.add_argument("--group", default=None, help="nom ou UUID du groupe (mangadex)")
+    c.add_argument("--lang", default="en", help="langue des chapitres (mangadex), '' pour toutes")
 
     c = sub.add_parser("fetch", help="télécharge un chapitre brut")
     c.add_argument("source")
@@ -64,26 +71,66 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--format", choices=["md", "json", "html"], required=True)
     c.add_argument("--out", required=True)
 
+    c = sub.add_parser("fetch-url", help="récupère un lien direct")
+    c.add_argument("url")
+    c.add_argument("--out", default="data")
+
+    c = sub.add_parser("ocr", help="OCR des images d'un chapitre")
+    c.add_argument("chapter_dir")
+    c.add_argument("--lang", default="eng", help="langue OCR")
+    c.add_argument("--engine", choices=["tesseract", "paddle"], default=None,
+                   help="moteur OCR (défaut: SCALPER_OCR_ENGINE ou tesseract)")
+    c.add_argument("--mock-ocr", action="store_true")
+
+    c = sub.add_parser("typeset", help="remplace le texte des images par la traduction")
+    c.add_argument("chapter_dir")
+    c.add_argument("--lang", required=True)
+
+    c = sub.add_parser("serve", help="démarre le serveur HTTP (déploiement Docker/Coolify)")
+    c.add_argument("--host", default="127.0.0.1")
+    c.add_argument("--port", type=int, default=8000)
+
     c = sub.add_parser("run", help="pipeline complet end-to-end")
     c.add_argument("--source", required=True)
     c.add_argument("--series", required=True)
     c.add_argument("--lang", required=True)
+    c.add_argument("--group", default=None, help="filtrer par groupe (mangadex)")
     c.add_argument("--out", default="out")
     c.add_argument("--max-chapters", type=int, default=None)
     c.add_argument("--mock-llm", action="store_true", help="démo hors ligne (LLM factice)")
+    c.add_argument("--with-ocr", action=argparse.BooleanOptionalAction, default=True,
+                   help="OCR + remplacement du texte dans les images (auto si images présentes ; --no-ocr pour désactiver)")
+    c.add_argument("--ocr-engine", choices=["tesseract", "paddle"], default=None,
+                   help="moteur OCR (défaut: SCALPER_OCR_ENGINE ou tesseract)")
+    c.add_argument("--force", action="store_true", help="exporte même si la QA échoue (bypass vérification)")
+    c.add_argument("--src-lang", default=None, help="langue d'entrée du chapitre (en, ja, fr…) : enregistrée dans meta.json et utilisée pour l'OCR")
 
     args = p.parse_args(argv)
 
-    if args.cmd == "check-source":
-        _print(legal.check_source(args.source).to_dict())
-        return 0
     if args.cmd == "list-series":
         adapter = get_adapter(args.source)
-        series = adapter.list_series() if args.source == "demo" else adapter.list_series(query="")
+        series = adapter.list_series(query=args.query) if args.source == "mangadex" else adapter.list_series()
         _print([s.to_dict() for s in series])
         return 0
+    if args.cmd == "list-groups":
+        if args.source != "mangadex":
+            print("list-groups est disponible uniquement pour la source 'mangadex'", file=sys.stderr)
+            return 1
+        from .sources.mangadex import MangaDexAdapter
+
+        _print(MangaDexAdapter(fetcher=RespectfulFetcher()).list_groups(args.query))
+        return 0
     if args.cmd == "list-chapters":
-        _print([c.to_dict() for c in get_adapter(args.source).list_chapters(args.series)])
+        adapter = get_adapter(args.source)
+        kwargs: dict = {}
+        if args.group:
+            if args.source != "mangadex":
+                print("--group est disponible uniquement pour la source 'mangadex'", file=sys.stderr)
+                return 1
+            kwargs["group"] = args.group
+        if args.source == "mangadex":
+            kwargs["lang"] = args.lang or None
+        _print([c.to_dict() for c in adapter.list_chapters(args.series, **kwargs)])
         return 0
     if args.cmd == "fetch":
         adapter = get_adapter(args.source, fetcher=RespectfulFetcher())
@@ -124,8 +171,52 @@ def main(argv: list[str] | None = None) -> int:
         path = export_chapter(chapter, args.format, Path(args.out))
         _print({"exported": str(path)})
         return 0
+    if args.cmd == "fetch-url":
+        fetcher = RespectfulFetcher()
+        html = fetcher.get(args.url).decode("utf-8", errors="replace")
+        domain = (urlparse(args.url).netloc or args.url).lower()
+        dest = Path(args.out) / "raw" / domain / slugify(args.url)
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "raw.html").write_text(html, encoding="utf-8")
+        meta = {
+            "source": domain,
+            "url": args.url,
+            "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        (dest / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        chapter = clean_chapter(html, meta)
+        (dest / "chapter.json").write_text(json.dumps(chapter.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        _print({"status": "ok", "dest": str(dest), "blocks": len(chapter.blocks), "language": chapter.meta.get("language")})
+        return 0
+    if args.cmd == "ocr":
+        from .ocr import FakeOCR, default_ocr_client, ocr_chapter
+
+        if getattr(args, "engine", None):
+            os.environ["SCALPER_OCR_ENGINE"] = args.engine
+        client = FakeOCR() if args.mock_ocr else default_ocr_client(lang=args.lang)
+        regions = ocr_chapter(Path(args.chapter_dir), client, lang=args.lang)
+        _print({"status": "ok", "regions": len(regions), "out": str(Path(args.chapter_dir) / "ocr.json")})
+        return 0
+    if args.cmd == "typeset":
+        from .typeset import typeset_chapter
+
+        outputs = typeset_chapter(Path(args.chapter_dir), args.lang)
+        _print({"status": "ok", "images": outputs})
+        return 0
+    if args.cmd == "serve":
+        from .server import serve
+
+        serve(args.host, args.port)
+        return 0
     if args.cmd == "run":
-        summary = pipeline.run_pipeline(args.source, args.series, args.lang, out_root=Path(args.out), mock_llm=args.mock_llm, max_chapters=args.max_chapters)
+        if getattr(args, "ocr_engine", None):
+            os.environ["SCALPER_OCR_ENGINE"] = args.ocr_engine
+        summary = pipeline.run_pipeline(
+            args.source, args.series, args.lang,
+            out_root=Path(args.out), mock_llm=args.mock_llm,
+            max_chapters=args.max_chapters, group=args.group, with_ocr=args.with_ocr,
+            force=args.force, src_lang=args.src_lang,
+        )
         _print(summary)
         return 0 if summary.get("status") == "done" else 3
     return 1

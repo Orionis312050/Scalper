@@ -13,7 +13,7 @@ def get_adapter(source_id: str, fetcher: RespectfulFetcher | None = None) -> Sou
         return MangaDexAdapter(fetcher=fetcher)
     raise KeyError(
         f"adaptateur inconnu: {source_id}. Sources disponibles : demo, mangadex. "
-        "Pour ajouter une source légale, voir docs/add-a-source.md."
+        "Pour ajouter une source, voir docs/add-a-source.md."
     )
 
 

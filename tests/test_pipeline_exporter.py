@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scalper import pipeline
 from scalper.exporter import export_chapter, slugify
@@ -10,11 +11,6 @@ from scalper.sources import get_adapter
 
 
 class TestPipeline(unittest.TestCase):
-    def test_blocked_source(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            res = pipeline.run_pipeline("https://mangas-origines.fr", "x", "fr", out_root=tmp, mock_llm=True)
-            self.assertEqual(res["status"], "blocked")
-
     def test_demo_end_to_end_mock_llm(self):
         with tempfile.TemporaryDirectory() as tmp:
             res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True)
@@ -35,16 +31,54 @@ class TestPipeline(unittest.TestCase):
             res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True)
             self.assertTrue(any(c.get("skipped") for c in res["chapters"]))
 
+    def test_qa_failure_blocks_export_without_force(self):
+        fake = {"score": 10, "pass": False, "issues": [{"type": "x", "critical": True}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("scalper.pipeline.qa_chapter", return_value=fake):
+                res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True, max_chapters=1)
+            self.assertEqual(res["chapters"][0]["status"], "qa_failed")
+            raw1 = Path(tmp) / "raw" / "demo" / "demo-1" / "demo-1-ch1"
+            self.assertFalse((raw1 / "export").exists())
+
+    def test_src_lang_persisted_in_meta_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True, max_chapters=1, src_lang="ja")
+            meta = json.loads((Path(tmp) / "raw" / "demo" / "demo-1" / "demo-1-ch1" / "meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta["language"], "ja")
+
+    def test_on_progress_callback(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline.run_pipeline(
+                "demo", "demo-1", "fr", out_root=tmp, mock_llm=True,
+                on_progress=lambda done, total, ref: calls.append((done, total, ref.id)),
+            )
+        self.assertEqual([(d, t) for d, t, _ in calls], [(1, 2), (2, 2)])
+        self.assertEqual(calls[-1][2], "demo-1-ch2")
+
+    def test_force_exports_despite_qa_failure(self):
+        fake = {"score": 10, "pass": False, "issues": [{"type": "x", "critical": True}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch("scalper.pipeline.qa_chapter", return_value=fake):
+                res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True, max_chapters=1, force=True)
+            self.assertEqual(res["status"], "done")
+            ch = res["chapters"][0]
+            self.assertEqual(ch["status"], "ok")
+            self.assertTrue(ch.get("forced"))
+            self.assertFalse(ch["qa"]["pass"])
+            raw1 = Path(tmp) / "raw" / "demo" / "demo-1" / "demo-1-ch1"
+            self.assertTrue(list((raw1 / "export").glob("*.md")))
+
 
 class TestExporter(unittest.TestCase):
-    def test_exports_contain_license(self):
+    def test_exports(self):
         ch = Chapter(
-            meta={"source": "demo", "license": "fixture test", "fetched_at": "2026-01-01", "url": "demo://x", "title": "T", "language": "fr"},
+            meta={"source": "demo", "fetched_at": "2026-01-01", "url": "demo://x", "title": "T", "language": "fr"},
             blocks=[Block(index=0, type="narration", text="Bonjour"), Block(index=1, type="image", image="images/p.png")],
         )
         with tempfile.TemporaryDirectory() as tmp:
             md = export_chapter(ch, "md", Path(tmp))
-            self.assertIn("Source et licence", md.read_text(encoding="utf-8"))
+            self.assertIn("Bonjour", md.read_text(encoding="utf-8"))
             self.assertIn("[IMG:1]", md.read_text(encoding="utf-8"))
             js = export_chapter(ch, "json", Path(tmp))
             self.assertEqual(json.loads(js.read_text(encoding="utf-8"))["blocks"][1]["image"], "images/p.png")

@@ -9,7 +9,7 @@ from scalper.translator import FakeLLM, chunk_blocks, translate_chapter
 
 def demo_chapter():
     raw = (resources.files("scalper") / "data" / "demo" / "chapter-1.html").read_text(encoding="utf-8")
-    return clean_chapter(raw, {"source": "demo", "license": "fixture", "language": "en"})
+    return clean_chapter(raw, {"source": "demo", "language": "en"})
 
 
 class TestTranslator(unittest.TestCase):

@@ -1,0 +1,30 @@
+# Déploiement Scalper — prêt pour Coolify (New Resource → Docker Compose depuis ce repo).
+#
+# 1) cp .env.example .env  et renseigne MISTRAL_API_KEY (jamais committer .env)
+# 2) docker compose up -d    (ou déploiement Coolify)
+#
+# Port hôte publié : SCALPER_HOST_PORT (défaut 8000). Le conteneur écoute toujours
+# en interne sur 8000. Si le port hôte est déjà occupé sur le serveur
+# ("Bind for 0.0.0.0:8000 failed: port is already allocated"), change SCALPER_HOST_PORT.
+services:
+  scalper:
+    build: .
+    container_name: scalper
+    ports:
+      - "8426:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MISTRAL_API_KEY=mstrl_gC0ggPOzDrlmPm9de9Co1st51TfIGScv_2eu6XV
+      - MISTRAL_MODEL=mistral-small-latest
+      - SCALPER_OCR_ENGINE=paddle
+    volumes:
+      - /DATA/AppData/scalper/data:/app/data
+      - /DATA/AppData/scalper/out:/app/out
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

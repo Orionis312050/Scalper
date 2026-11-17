@@ -1,4 +1,4 @@
-"""manga-exporter : exports Markdown / JSON / HTML avec page « source & licence »."""
+"""manga-exporter : exports Markdown / JSON / HTML."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import html
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 from .models import Chapter
 
@@ -16,20 +15,10 @@ def slugify(text: str) -> str:
     return text or "chapter"
 
 
-def license_block(meta: dict[str, Any]) -> str:
-    return (
-        f"> **Source et licence** — source : {meta.get('source', '?')} | "
-        f"licence : {meta.get('license', '?')} | "
-        f"récupéré le : {meta.get('fetched_at', '?')} | url : {meta.get('url', '?')}"
-    )
-
-
 def export_markdown(chapter: Chapter, out_path: Path) -> Path:
     meta = chapter.meta
     lines = [
         f"# {meta.get('title', 'Chapitre')}",
-        "",
-        license_block(meta),
         "",
     ]
     for b in chapter.blocks:
@@ -56,10 +45,9 @@ def export_html(chapter: Chapter, out_path: Path) -> Path:
     parts = [
         "<!doctype html><html lang=\"{lang}\"><head><meta charset=\"utf-8\">",
         f"<title>{html.escape(str(meta.get('title', 'Chapitre')))}</title>",
-        "<style>body{font-family:serif;max-width:42rem;margin:2rem auto;line-height:1.6}blockquote{border-left:3px solid #888;padding-left:1rem;color:#333}img{max-width:100%}.lic{font-size:.8rem;color:#666}</style>",
+        "<style>body{font-family:serif;max-width:42rem;margin:2rem auto;line-height:1.6}blockquote{border-left:3px solid #888;padding-left:1rem;color:#333}img{max-width:100%}</style>",
         "</head><body>",
         f"<h1>{html.escape(str(meta.get('title', 'Chapitre')))}</h1>",
-        f"<p class=\"lic\">{html.escape(license_block(meta))}</p>",
     ]
     for b in chapter.blocks:
         if b.type == "image":

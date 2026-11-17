@@ -15,7 +15,7 @@ dependencies = []
 dev = ["pytest>=8"]
 agents = ["mistralai-agents>=1.1"]
 ocr = ["pillow>=10.1", "pytesseract>=0.3.10"]
-ocr-paddle = ["paddlepaddle>=3.0", "paddleocr>=3.0"]
+ocr-paddle = ["paddlepaddle>=3.0,<3.3", "paddleocr>=3.0"]  # paddlepaddle 3.3.x: bug oneDNN ConvertPirAttribute2RuntimeAttribute (Paddle#79749) -> pin <3.3
 
 [project.scripts]
 scalper = "scalper.cli:main"

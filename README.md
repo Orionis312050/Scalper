@@ -61,6 +61,9 @@ Mistral OCR (API `mistral-ocr-*`) n'est **pas gratuit** (facturé à la page) : 
 PaddleOCR : l'image Docker embarque déjà les deux moteurs (`pip install ".[ocr,ocr-paddle]"` dans le
 `Dockerfile`, sélection par `SCALPER_OCR_ENGINE`). Hors Docker : `pip install -e ".[ocr-paddle]"`
 (les wheels Paddle sont prévues pour Linux ; sur Windows en local, préférez le conteneur Docker).
+`paddlepaddle` est épinglé `<3.3` : la 3.3.x plante en inférence CPU oneDNN
+(`ConvertPirAttribute2RuntimeAttribute ... ArrayAttribute<DoubleAttribute>`, Paddle#79749) —
+vérifié localement : 3.3.1 crashe, 3.2.2 fonctionne.
 
 Commandes manuelles : `scalper ocr <chapter_dir> [--mock-ocr]` et `scalper typeset <chapter_dir> --lang fr`.
 

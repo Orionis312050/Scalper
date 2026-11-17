@@ -1,8 +1,15 @@
-"""OCR des images d'un chapitre (texte dans les bulles)."""
+"""OCR des images d'un chapitre (texte dans les bulles).
+
+Deux moteurs (protocol OCRClient) :
+- TesseractOCR : tesseract (léger, dans l'image Docker), moteur par défaut ;
+- PaddleOCR    : PaddleOCR (gratuit, local, meilleur sur texte stylisé/bulles),
+  à installer via l'extra ".[ocr-paddle]" et à activer via SCALPER_OCR_ENGINE=paddle.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -45,6 +52,69 @@ class TesseractOCR:
             # format de sortie : [x, y, w, h] (et non [x0, y0, x1, y1])
             out.append(dict(v, index=i, box=[x0, y0, max(1, x1 - x0), max(1, y1 - y0)]))
         return out
+
+
+# Codes langue (style Tesseract) -> code langue PaddleOCR
+_PADDLE_LANGS = {
+    "eng": "en", "fra": "fr", "deu": "german", "spa": "es", "ita": "it", "por": "pt",
+    "jpn": "japan", "chi_sim": "ch", "kor": "korean",
+}
+
+
+class PaddleOCR:
+    """OCR via PaddleOCR (gratuit, 100 % local, meilleur sur texte stylisé/bulles).
+
+    Nécessite : pip install -e ".[ocr-paddle]" (paddlepaddle + paddleocr).
+    """
+
+    def __init__(self, lang: str = "eng") -> None:
+        self.lang = lang
+        self._engine = None
+
+    def recognize(self, image_path: Path, lang: str | None = None) -> list[dict[str, Any]]:
+        try:
+            from paddleocr import PaddleOCR as _PaddleEngine
+        except ImportError as e:
+            raise RuntimeError(
+                'PaddleOCR non installé : pip install -e ".[ocr-paddle]" '
+                "(ou SCALPER_OCR_ENGINE=tesseract pour rester sur Tesseract)"
+            ) from e
+        if self._engine is None:
+            paddle_lang = _PADDLE_LANGS.get((lang or self.lang), "en")
+            self._engine = _PaddleEngine(lang=paddle_lang, use_textline_orientation=True)
+        results = self._engine.predict(str(image_path))
+        regions: list[dict[str, Any]] = []
+        for res in results or []:
+            texts = res.get("rec_texts") or []
+            scores = res.get("rec_scores") or []
+            polys = res.get("dt_polys") or res.get("rec_boxes") or []
+            for text, score, poly in zip(texts, scores, polys):
+                text = (text or "").strip()
+                try:
+                    score = float(score)
+                except (TypeError, ValueError):
+                    score = -1.0
+                if not text or score < 0.6:
+                    continue
+                xs = [p[0] for p in poly]
+                ys = [p[1] for p in poly]
+                x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+                regions.append({
+                    "image": image_path.name,
+                    "box": [int(x0), int(y0), max(1, int(x1 - x0)), max(1, int(y1 - y0))],
+                    "text": text,
+                })
+        for i, r in enumerate(regions):
+            r["index"] = i
+        return regions
+
+
+def default_ocr_client(lang: str = "eng") -> OCRClient:
+    """Moteur OCR par défaut : SCALPER_OCR_ENGINE=paddle -> PaddleOCR, sinon Tesseract."""
+    engine = os.environ.get("SCALPER_OCR_ENGINE", "tesseract").strip().lower()
+    if engine == "paddle":
+        return PaddleOCR(lang=lang)
+    return TesseractOCR(lang=lang)
 
 
 class FakeOCR:

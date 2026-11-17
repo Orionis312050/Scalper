@@ -97,14 +97,14 @@ _TESSERACT_LANGS = {
 def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMClient, glossary: dict[str, str]) -> str:
     """OCR des images du chapitre, traduction des textes détectés via le LLM, puis
     remplacement dans les images (inpainting + retypographie) -> export/images-<lang>/."""
-    from .ocr import TesseractOCR, ocr_chapter
+    from .ocr import default_ocr_client, ocr_chapter
     from .typeset import typeset_chapter
 
     if not (dest / "images").exists():
         return "skipped : aucune image dans ce chapitre"
     try:
         src_lang = _TESSERACT_LANGS.get(str(meta.get("language") or "en")[:2].lower(), "eng")
-        regions = ocr_chapter(dest, TesseractOCR(), lang=src_lang)
+        regions = ocr_chapter(dest, default_ocr_client(src_lang), lang=src_lang)
         if not regions:
             return "skipped : aucun texte détecté dans les images"
         ocr_chapter_src = Chapter(

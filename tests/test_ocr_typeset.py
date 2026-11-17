@@ -1,5 +1,8 @@
 import json
+import os
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -15,6 +18,56 @@ try:
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
+
+
+class TestEngineSelection(unittest.TestCase):
+    def test_default_engine_is_tesseract(self):
+        from scalper.ocr import TesseractOCR, default_ocr_client
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertIsInstance(default_ocr_client(), TesseractOCR)
+
+    def test_paddle_engine_via_env(self):
+        from scalper.ocr import PaddleOCR, default_ocr_client
+
+        with mock.patch.dict(os.environ, {"SCALPER_OCR_ENGINE": "paddle"}):
+            self.assertIsInstance(default_ocr_client(), PaddleOCR)
+
+
+class TestPaddleOCRMapping(unittest.TestCase):
+    def test_recognize_maps_polys_to_xywh_and_filters_low_conf(self):
+        from scalper.ocr import PaddleOCR
+
+        class FakeEngine:
+            def __init__(self, **kw):
+                pass
+
+            def predict(self, path):
+                return [{
+                    "rec_texts": ["Hello", "lowconf"],
+                    "rec_scores": [0.95, 0.2],
+                    "dt_polys": [
+                        [[100, 50], [130, 50], [130, 70], [100, 70]],
+                        [[10, 10], [20, 10], [20, 20], [10, 20]],
+                    ],
+                }]
+
+        fake_mod = types.ModuleType("paddleocr")
+        fake_mod.PaddleOCR = FakeEngine
+        with mock.patch.dict(sys.modules, {"paddleocr": fake_mod}):
+            regions = PaddleOCR().recognize(Path("p.png"))
+        self.assertEqual(len(regions), 1)
+        self.assertEqual(regions[0]["box"], [100, 50, 30, 20])  # x, y, w, h
+        self.assertEqual(regions[0]["text"], "Hello")
+        self.assertEqual(regions[0]["index"], 0)
+
+    def test_missing_paddle_raises_clear_error(self):
+        from scalper.ocr import PaddleOCR
+
+        with mock.patch.dict(sys.modules, {"paddleocr": None}):
+            with self.assertRaises(RuntimeError) as cm:
+                PaddleOCR().recognize(Path("p.png"))
+            self.assertIn("ocr-paddle", str(cm.exception))
 
 
 class TestTesseractBoxFormat(unittest.TestCase):

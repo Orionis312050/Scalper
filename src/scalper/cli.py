@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -74,9 +75,11 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("url")
     c.add_argument("--out", default="data")
 
-    c = sub.add_parser("ocr", help="OCR des images d'un chapitre (tesseract)")
+    c = sub.add_parser("ocr", help="OCR des images d'un chapitre")
     c.add_argument("chapter_dir")
-    c.add_argument("--lang", default="eng", help="langue OCR (tesseract)")
+    c.add_argument("--lang", default="eng", help="langue OCR")
+    c.add_argument("--engine", choices=["tesseract", "paddle"], default=None,
+                   help="moteur OCR (défaut: SCALPER_OCR_ENGINE ou tesseract)")
     c.add_argument("--mock-ocr", action="store_true")
 
     c = sub.add_parser("typeset", help="remplace le texte des images par la traduction")
@@ -97,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--mock-llm", action="store_true", help="démo hors ligne (LLM factice)")
     c.add_argument("--with-ocr", action=argparse.BooleanOptionalAction, default=True,
                    help="OCR + remplacement du texte dans les images (auto si images présentes ; --no-ocr pour désactiver)")
+    c.add_argument("--ocr-engine", choices=["tesseract", "paddle"], default=None,
+                   help="moteur OCR (défaut: SCALPER_OCR_ENGINE ou tesseract)")
     c.add_argument("--force", action="store_true", help="exporte même si la QA échoue (bypass vérification)")
 
     args = p.parse_args(argv)
@@ -183,9 +188,11 @@ def main(argv: list[str] | None = None) -> int:
         _print({"status": "ok", "dest": str(dest), "blocks": len(chapter.blocks), "language": chapter.meta.get("language")})
         return 0
     if args.cmd == "ocr":
-        from .ocr import FakeOCR, TesseractOCR, ocr_chapter
+        from .ocr import FakeOCR, default_ocr_client, ocr_chapter
 
-        client = FakeOCR() if args.mock_ocr else TesseractOCR(lang=args.lang)
+        if getattr(args, "engine", None):
+            os.environ["SCALPER_OCR_ENGINE"] = args.engine
+        client = FakeOCR() if args.mock_ocr else default_ocr_client(lang=args.lang)
         regions = ocr_chapter(Path(args.chapter_dir), client, lang=args.lang)
         _print({"status": "ok", "regions": len(regions), "out": str(Path(args.chapter_dir) / "ocr.json")})
         return 0
@@ -201,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
         serve(args.host, args.port)
         return 0
     if args.cmd == "run":
+        if getattr(args, "ocr_engine", None):
+            os.environ["SCALPER_OCR_ENGINE"] = args.ocr_engine
         summary = pipeline.run_pipeline(
             args.source, args.series, args.lang,
             out_root=Path(args.out), mock_llm=args.mock_llm,

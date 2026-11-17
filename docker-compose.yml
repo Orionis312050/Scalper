@@ -16,6 +16,9 @@ services:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
+      - MISTRAL_API_KEY=mstrl_gC0ggPOzDrlmPm9de9Co1st51TfIGScv_2eu6XV
+      - MISTRAL_MODEL=mistral-small-latest
+      - SCALPER_OCR_ENGINE=paddle
     volumes:
       - /DATA/AppData/scalper/data:/app/data
       - /DATA/AppData/scalper/out:/app/out

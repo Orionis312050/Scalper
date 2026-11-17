@@ -50,6 +50,18 @@ La langue source de l'OCR est déduite de la langue détectée du chapitre (`en�
 `ja→jpn`…). L'image Docker n'embarque que `eng` (`tesseract-ocr` inclut `tesseract-ocr-eng`) :
 ajoute ex. `tesseract-ocr-fra` / `tesseract-ocr-jpn` dans le `Dockerfile` pour d'autres sources.
 
+**Moteurs OCR** (protocol `OCRClient`, sélection par `SCALPER_OCR_ENGINE` ou `--ocr-engine`) :
+
+| Moteur | Gratuit | Local | Qualité bulles/stylisé | Install |
+|---|---|---|---|---|
+| `tesseract` (défaut) | oui | oui | moyenne | déjà dans l'image Docker |
+| `paddle` (PaddleOCR) | oui | oui | **meilleure** (PP-OCRv6) | `pip install -e ".[ocr-paddle]"`, puis `SCALPER_OCR_ENGINE=paddle` |
+
+Mistral OCR (API `mistral-ocr-*`) n'est **pas gratuit** (facturé à la page) : non retenu par défaut.
+PaddleOCR : `pip install -e ".[ocr-paddle"]` ; dans le conteneur, remplace `".[ocr]"` par
+`".[ocr-paddle]"` dans le `Dockerfile` (les wheels Paddle sont prévues pour Linux ; sur Windows en
+local, préférez le conteneur Docker).
+
 Commandes manuelles : `scalper ocr <chapter_dir> [--mock-ocr]` et `scalper typeset <chapter_dir> --lang fr`.
 
 ## Architecture

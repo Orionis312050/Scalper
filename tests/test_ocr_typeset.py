@@ -61,6 +61,41 @@ class TestPaddleOCRMapping(unittest.TestCase):
         self.assertEqual(regions[0]["text"], "Hello")
         self.assertEqual(regions[0]["index"], 0)
 
+    def test_recognize_tolerates_array_like_fields(self):
+        """rec_boxes/dt_polys peuvent être des ndarray : `x or y` crashe (truth value ambigu)."""
+        from scalper.ocr import PaddleOCR
+
+        class FakeArray(list):
+            def __bool__(self):
+                raise ValueError("The truth value of an empty array is ambiguous")
+
+        class FakeEngine:
+            def __init__(self, **kw):
+                pass
+
+            def predict(self, path):
+                if path == "empty.png":
+                    return [{"rec_texts": [], "rec_scores": [], "dt_polys": FakeArray(), "rec_boxes": FakeArray()}]
+                return [{
+                    "rec_texts": ["Hello", "World"],
+                    "rec_scores": [0.95, 0.9],
+                    "dt_polys": FakeArray([
+                        [[100, 50], [130, 50], [130, 70], [100, 70]],
+                        [[10, 10], [40, 10], [40, 30], [10, 30]],
+                    ]),
+                    "rec_boxes": FakeArray(),
+                }]
+
+        fake_mod = types.ModuleType("paddleocr")
+        fake_mod.PaddleOCR = FakeEngine
+        with mock.patch.dict(sys.modules, {"paddleocr": fake_mod}):
+            client = PaddleOCR()
+            empty = client.recognize(Path("empty.png"))
+            full = client.recognize(Path("multi.png"))
+        self.assertEqual(empty, [])
+        self.assertEqual([r["text"] for r in full], ["Hello", "World"])
+        self.assertEqual(full[0]["box"], [100, 50, 30, 20])
+
     def test_missing_paddle_raises_clear_error(self):
         from scalper.ocr import PaddleOCR
 

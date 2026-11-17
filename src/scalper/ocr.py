@@ -14,6 +14,13 @@ from pathlib import Path
 from typing import Any, Protocol
 
 
+def _as_list(value: Any) -> list:
+    """Normalise list/ndarray/None en list (évite `or` sur un ndarray : truth value ambigu)."""
+    if value is None:
+        return []
+    return list(value)
+
+
 class OCRClient(Protocol):
     def recognize(self, image_path: Path, lang: str = "eng") -> list[dict[str, Any]]: ...
 
@@ -83,12 +90,18 @@ class PaddleOCR:
             paddle_lang = _PADDLE_LANGS.get((lang or self.lang), "en")
             self._engine = _PaddleEngine(lang=paddle_lang, use_textline_orientation=True)
         results = self._engine.predict(str(image_path))
+        if results is None:
+            return []
+        if not isinstance(results, (list, tuple)):
+            results = [results]
         regions: list[dict[str, Any]] = []
-        for res in results or []:
-            texts = res.get("rec_texts") or []
-            scores = res.get("rec_scores") or []
-            polys = res.get("dt_polys") or res.get("rec_boxes") or []
-            for text, score, poly in zip(texts, scores, polys):
+        for res in results:
+            texts = _as_list(res.get("rec_texts"))
+            scores = _as_list(res.get("rec_scores"))
+            polys = res.get("dt_polys")
+            if polys is None or len(polys) == 0:
+                polys = res.get("rec_boxes")
+            for text, score, poly in zip(texts, scores, _as_list(polys)):
                 text = (text or "").strip()
                 try:
                     score = float(score)

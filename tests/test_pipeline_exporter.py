@@ -40,6 +40,12 @@ class TestPipeline(unittest.TestCase):
             raw1 = Path(tmp) / "raw" / "demo" / "demo-1" / "demo-1-ch1"
             self.assertFalse((raw1 / "export").exists())
 
+    def test_src_lang_persisted_in_meta_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True, max_chapters=1, src_lang="ja")
+            meta = json.loads((Path(tmp) / "raw" / "demo" / "demo-1" / "demo-1-ch1" / "meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta["language"], "ja")
+
     def test_on_progress_callback(self):
         calls = []
         with tempfile.TemporaryDirectory() as tmp:

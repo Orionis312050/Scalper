@@ -69,6 +69,15 @@ class TestPaddleOCRMapping(unittest.TestCase):
                 PaddleOCR().recognize(Path("p.png"))
             self.assertIn("ocr-paddle", str(cm.exception))
 
+    def test_pipeline_ocr_error_is_surfaced_not_raised(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "images").mkdir()
+            with mock.patch("scalper.ocr.default_ocr_client", side_effect=RuntimeError("boom")):
+                out = pipeline._run_ocr_typeset(d, {"language": "en"}, "fr", FakeLLM(), {})
+        self.assertTrue(out.startswith("erreur"), out)
+        self.assertIn("boom", out)
+
 
 class TestTesseractBoxFormat(unittest.TestCase):
     def test_box_is_xywh_not_corners(self):

@@ -35,7 +35,8 @@ Les résultats sont écrits dans le volume `./out` (monté dans le compose).
 |---|---|---|
 | GET | `/` | **interface web** : formulaire run + barre de progression + previews (chapitre récupéré / traduit complet) |
 | GET | `/healthz` | sonde de santé |
-| POST | `/run` | pipeline complet (scrape → clean → translate → QA → export, + OCR/typeset auto des images). Options : `"force": true` (exporte même si la QA échoue, chapitres marqués `"forced": true`), `"with_ocr": false` (désactive l'OCR/typeset, actif par défaut), `"background": true` → répond `202 {"job": id}` et le run tourne en thread |
+| POST | `/login` / `GET|POST /setup?token=` | auth : création du compte au 1er démarrage via le lien à usage unique affiché dans les logs, puis login → Bearer token requis sur tous les autres endpoints |
+| POST | `/run` | pipeline complet (scrape → clean → translate → QA → export, + OCR/typeset auto des images). Options : `"force": true` (exporte même si la QA échoue, chapitres marqués `"forced": true`), `"with_ocr": false` (désactive l'OCR/typeset, actif par défaut), `"background": true` → répond `202 {"job": id}` et le run tourne en thread, `"src_lang": "en"` (langue d'entrée du chapitre, utilisée pour l'OCR) |
 | GET | `/jobs/<id>` | progression du job background `{status, progress: {done, total, current}, result, error}` |
 | GET | `/api/chapter?out=&source=&series=&chapter=&lang=` | données de preview : meta, blocs source (`chapter.json`) et traduits (`chapter.<lang>.json`), images, images traduites |
 | GET | `/file?out=&path=` | sert un fichier sous `out` (images, exports), anti path-traversal |

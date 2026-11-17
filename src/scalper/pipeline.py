@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -28,6 +29,7 @@ def run_pipeline(
     with_ocr: bool = True,
     force: bool = False,
     on_progress: Callable[[int, int, Any], None] | None = None,
+    src_lang: str | None = None,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
     fetcher = fetcher or RespectfulFetcher(min_delay=1.0)
@@ -57,6 +59,8 @@ def run_pipeline(
             meta["url"] = ref.url
             raw = (dest / "raw.html").read_text(encoding="utf-8")
             chapter = clean_chapter(raw, meta)
+            meta["language"] = src_lang or chapter.meta.get("language") or meta.get("language")
+            (dest / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
             (dest / "chapter.json").write_text(json.dumps(chapter.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
             state.mark_fetched(ref.id)
             entry["blocks"] = len(chapter.blocks)
@@ -101,12 +105,16 @@ def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMCli
     from .typeset import typeset_chapter
 
     if not (dest / "images").exists():
-        return "skipped : aucune image dans ce chapitre"
+        msg = "skipped : aucune image dans ce chapitre"
+        print(f"[scalper][ocr] {dest.name}: {msg}", file=sys.stderr)
+        return msg
     try:
         src_lang = _TESSERACT_LANGS.get(str(meta.get("language") or "en")[:2].lower(), "eng")
         regions = ocr_chapter(dest, default_ocr_client(src_lang), lang=src_lang)
         if not regions:
-            return "skipped : aucun texte détecté dans les images"
+            msg = "skipped : aucun texte détecté dans les images"
+            print(f"[scalper][ocr] {dest.name}: {msg}", file=sys.stderr)
+            return msg
         ocr_chapter_src = Chapter(
             meta={"language": src_lang},
             blocks=[Block(index=i, type="narration", text=r.get("text", "")) for i, r in enumerate(regions)],
@@ -115,4 +123,5 @@ def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMCli
         outs = typeset_chapter(dest, lang, translations=[b.text for b in translated.blocks])
         return f"ok ({len(outs)} images reconstituées, {len(regions)} textes remplacés)"
     except Exception as e:
+        print(f"[scalper][ocr] {dest.name} ERREUR: {e}", file=sys.stderr)
         return f"erreur: {e}"

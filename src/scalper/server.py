@@ -166,7 +166,7 @@ blockquote{margin:.3rem 0;padding:.2rem .6rem;border-left:3px solid #888;color:#
 <label><input type="checkbox" id="r-mock" style="width:auto"> mock-llm (démo hors ligne)</label>
 <label><input type="checkbox" id="r-force" style="width:auto"> forcer l'export même si la QA échoue</label>
 <label><input type="checkbox" id="r-ocr" checked style="width:auto"> OCR + remplacement du texte dans les images (auto)</label>
-<label><input type="checkbox" id="r-zip" style="width:auto"> zip export-<date>-<heure>-<minutes>.zip à la fin (images + PDF, le reste de out/ est supprimé)</label><br>
+<label><input type="checkbox" id="r-zip" checked style="width:auto"> zip export-<date>-<heure>-<minutes>.zip à la fin (images + PDF, le reste de out/ est supprimé)</label><br>
 <button onclick="runPipeline()">Lancer le pipeline</button>
 </fieldset>
 <div id="progress-wrap"><div id="bar"></div></div>

@@ -160,6 +160,7 @@ def typeset_chapter(
     translations: list[str] | None = None,
     inpainter=None,
     clean_subdir: str = "export/images-clean",
+    on_step=None,
 ) -> list[str]:
     """Étapes 3+4 sur tout le chapitre → `export/images-<lang>/`.
 
@@ -191,8 +192,12 @@ def typeset_chapter(
         src = images_dir / name
         if src.exists():
             # étape 3 : effacement du texte original sur l'image brute
+            if on_step is not None:
+                on_step("inpaint")
             clean_path = inpaint_image_file(src, regions, clean_dir / name, inpainter)
             # étape 4 : retypographie de la traduction sur l'image nettoyée
+            if on_step is not None:
+                on_step("typeset")
             outputs.append(str(replace_texts(clean_path, regions, translations, out_dir / name, inpainter=_DRAW_ONLY)))
     # pages sans texte détecté : copiées telles quelles (clean + export) pour un export complet
     for p in sorted(images_dir.iterdir()):

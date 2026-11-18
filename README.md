@@ -164,7 +164,10 @@ L'interface web (`GET /`) — refondue dans un style **Aceternity UI** (thème s
 animée, cartes à bord dégradé, toggles, barre de progression dégradée ; 100 % vanilla CSS/JS,
 sans build ni CDN, servie en un seul fichier par le serveur stdlib) — affiche une **barre de
 progression** pendant le run (via `POST /run` avec `"background": true` + polling de
-`GET /jobs/<id>`), permet de choisir les moteurs (`ocr_engine`, `inpaint_engine`) et coche par
+`GET /jobs/<id>`) — affichée **en étapes** : téléchargement des images → récupération des textes
+(OCR) → traduction des textes → effacement des bulles sur les images (LaMa) → mise en place du
+texte traduit sur les images cleaned → compression du rendu (zip) → suppression du reste de `out/`.
+L'UI permet de choisir les moteurs (`ocr_engine`, `inpaint_engine`) et coche par
 défaut le **zip export** ; puis une **preview par chapitre** : blocs du chapitre récupéré
 (source) et du chapitre traduit complet, avec les images servies via `GET /file` (et les images
 re-traduites `export/images-<lang>/` quand l'OCR/typeset a tourné).

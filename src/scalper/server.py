@@ -34,6 +34,18 @@ from . import pipeline
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
 
+# Étapes du pipeline affichées dans la barre de progression de l'UI (clé -> libellé)
+STEP_LABELS = {
+    "fetch": "Téléchargement des images",
+    "ocr": "Récupération des textes (OCR)",
+    "translate": "Traduction des textes",
+    "inpaint": "Effacement des bulles de texte sur les images (LaMa)",
+    "typeset": "Mise en place du texte traduit sur les images cleaned",
+    "zip": "Compression du rendu (zip)",
+    "clean": "Suppression du reste de out/",
+}
+STEP_ORDER = list(STEP_LABELS)
+
 AUTH_FILE = Path(os.environ.get("SCALPER_AUTH_FILE", "data/auth.json"))
 SETUP_TOKEN: str | None = None
 SESSIONS: dict[str, float] = {}
@@ -86,14 +98,17 @@ def _authorized(headers) -> bool:
 def _start_job(body: dict) -> str:
     """Lance run_pipeline dans un thread et retourne l'id du job."""
     job_id = uuid.uuid4().hex[:12]
-    job = {"status": "running", "progress": {"done": 0, "total": 0, "current": None}, "result": None, "error": None}
+    job = {"status": "running", "progress": {"done": 0, "total": 0, "current": None, "step": None}, "result": None, "error": None}
     with JOBS_LOCK:
         JOBS[job_id] = job
 
     def work() -> None:
         try:
             def on_progress(done: int, total: int, ref) -> None:
-                job["progress"] = {"done": done, "total": total, "current": ref.id}
+                job["progress"].update({"done": done, "total": total, "current": ref.id})
+
+            def on_step(step: str) -> None:
+                job["progress"].update({"step": step})
 
             summary = pipeline.run_pipeline(
                 body["source"], body["series"], body["lang"],
@@ -108,6 +123,7 @@ def _start_job(body: dict) -> str:
                 ocr_engine=body.get("ocr_engine"),
                 zip_export=bool(body.get("zip_export", False)),
                 on_progress=on_progress,
+                on_step=on_step,
             )
             job["result"] = summary
             job["status"] = "done"
@@ -173,6 +189,14 @@ input:focus,select:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(99
 #progress-wrap{display:none;height:.85rem;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--border);overflow:hidden;margin:1rem 0 .35rem}
 #bar{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,var(--indigo),var(--fuchsia),var(--cyan));box-shadow:0 0 14px rgba(99,102,241,.9);transition:width .3s}
 #bar-label{font-size:.8rem;color:var(--muted);margin-bottom:1rem;min-height:1.1em}
+.steps{display:flex;gap:.4rem;flex-wrap:wrap;margin:.9rem 0 .4rem}
+.step{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .65rem;border-radius:999px;border:1px solid var(--border);font-size:.72rem;color:var(--muted);background:rgba(255,255,255,.03);transition:.2s}
+.step .dot{width:.55rem;height:.55rem;border-radius:50%;background:rgba(255,255,255,.18);flex:none}
+.step.active{color:#fff;border-color:transparent;background:linear-gradient(90deg,rgba(99,102,241,.3),rgba(217,70,239,.3));box-shadow:0 0 16px rgba(99,102,241,.4)}
+.step.active .dot{background:linear-gradient(90deg,var(--indigo),var(--fuchsia));box-shadow:0 0 8px var(--fuchsia);animation:pulse 1s ease-in-out infinite alternate}
+.step.done{color:#a7f3d0;border-color:rgba(52,211,153,.35)}
+.step.done .dot{background:#34d399}
+@keyframes pulse{from{transform:scale(1)}to{transform:scale(1.35)}}
 pre#out{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.78rem;line-height:1.45;background:rgba(0,0,0,.65);border:1px solid var(--border);border-radius:.9rem;padding:1rem;overflow:auto;white-space:pre-wrap;max-height:26rem;margin:0}
 #previews{margin-top:1.4rem}
 .chapter{border:1px solid var(--border);border-radius:1rem;background:var(--card);backdrop-filter:blur(8px);padding:1.1rem 1.2rem;margin:1rem 0;transition:border-color .2s}
@@ -219,6 +243,7 @@ blockquote{margin:.3rem 0;padding:.25rem .7rem;border-left:3px solid var(--indig
 </div>
 <button class="btn" onclick="runPipeline()">Lancer le pipeline</button>
 </div>
+<div id="steps" class="steps"></div>
 <div id="progress-wrap"><div id="bar"></div></div>
 <div id="bar-label"></div>
 <div class="card" style="margin-top:1rem"><pre id="out">résultats ici…</pre></div>
@@ -244,15 +269,29 @@ async function runPipeline(){
   if(!j.job){ document.getElementById('out').textContent=r.status+' '+JSON.stringify(j,null,2); return; }
   poll(j.job, body.out||'out');
 }
+const STEPS=[["fetch","Téléchargement des images"],["ocr","Récupération des textes (OCR)"],["translate","Traduction des textes"],["inpaint","Effacement des bulles (LaMa)"],["typeset","Texte traduit sur images cleaned"],["zip","Compression (zip)"],["clean","Suppression du reste"]];
+function renderSteps(cur){
+  const el=document.getElementById('steps'); if(!el) return; el.innerHTML='';
+  const idx=STEPS.findIndex(s=>s[0]===cur);
+  STEPS.forEach(([k,label],i)=>{
+    const d=document.createElement('div');
+    d.className='step'+(cur?(i<idx?' done':(i===idx?' active':'')):'');
+    const dot=document.createElement('span'); dot.className='dot'; d.appendChild(dot);
+    d.appendChild(document.createTextNode((cur&&i<idx?'✓ ':'')+label));
+    el.appendChild(d);
+  });
+}
 function poll(jobId,out){
   const wrap=document.getElementById('progress-wrap'), bar=document.getElementById('bar'), label=document.getElementById('bar-label');
-  wrap.style.display='block'; bar.style.width='0%';
+  wrap.style.display='block'; bar.style.width='0%'; renderSteps(null);
   const t=setInterval(async ()=>{
     const r=await api('/jobs/'+jobId); const j=await r.json();
-    const p=j.progress||{done:0,total:0,current:''};
+    const p=j.progress||{done:0,total:0,current:'',step:null};
     const pct=p.total?Math.round(100*p.done/Math.max(1,p.total)):0;
     bar.style.width=pct+'%';
-    label.textContent=pct+'% — chapitre '+p.done+'/'+p.total+(p.current?' ('+p.current+')':'');
+    renderSteps(p.step||null);
+    const sl=p.step?(((STEPS.find(s=>s[0]===p.step)||[])[1])||p.step)+' — ':'';
+    label.textContent=sl+pct+'% — chapitre '+p.done+'/'+p.total+(p.current?' ('+p.current+')':'');
     if(j.status!=='running'){ clearInterval(t); setTimeout(()=>{wrap.style.display='none';},1500); render(j,out); }
   },800);
 }

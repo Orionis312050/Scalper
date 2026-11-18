@@ -351,6 +351,26 @@ class TestOCRTypeset(unittest.TestCase):
             self.assertTrue((d / "export" / "images-clean" / "p1.png").exists(), "étape 3 : inpainting -> images-clean")
             self.assertTrue((d / "export" / "images-fr" / "p1.png").exists(), "étape 4 : retypographie -> images-fr")
 
+    def test_pipeline_ocr_typeset_reports_steps_in_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "images").mkdir()
+            self._make_image(d / "images" / "p1.png")
+            regions = [{"index": 0, "image": "p1.png", "box": [10, 10, 280, 60], "text": "Hello world"}]
+
+            def fake_ocr(chapter_dir, client, lang="eng"):
+                (Path(chapter_dir) / "ocr.json").write_text(
+                    json.dumps({"lang": lang, "regions": regions}), encoding="utf-8"
+                )
+                return regions
+
+            steps = []
+            with mock.patch("scalper.ocr.ocr_chapter", side_effect=fake_ocr):
+                out = pipeline._run_ocr_typeset(d, {"language": "en"}, "fr", FakeLLM(), {},
+                                                inpaint_engine="simple", on_step=steps.append)
+            self.assertTrue(out.startswith("ok"), out)
+            self.assertEqual(steps, ["ocr", "translate", "inpaint", "typeset"], steps)
+
 
 if __name__ == "__main__":
     unittest.main()

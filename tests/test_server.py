@@ -116,6 +116,31 @@ class TestServer(unittest.TestCase):
             self.assertIn("Scalper", body)
             self.assertIn("/run", body)
 
+    def test_web_ui_has_step_bar(self):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/") as r:
+            body = r.read().decode("utf-8")
+            self.assertIn('id="steps"', body)
+            for label in ("Téléchargement des images", "Récupération des textes (OCR)", "Traduction des textes",
+                          "Effacement des bulles", "images cleaned", "Compression (zip)", "Suppression du reste"):
+                self.assertIn(label, body)
+
+    def test_background_job_progress_has_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            status, body = self._post("/run", {"source": "demo", "series": "demo-1", "lang": "fr",
+                                               "mock_llm": True, "out": tmp, "background": True,
+                                               "zip_export": True})
+            self.assertEqual(status, 202)
+            job = body["job"]
+            j = {}
+            for _ in range(200):
+                s, j = self._get(f"/jobs/{job}")
+                if j["status"] != "running":
+                    break
+                time.sleep(0.05)
+            self.assertEqual(j["status"], "done")
+            self.assertIn("step", j["progress"])
+            self.assertEqual(j["progress"]["step"], "clean", j["progress"])  # zip_export -> zip puis clean
+
     def test_run_demo_mock_llm(self):
         with tempfile.TemporaryDirectory() as tmp:
             status, body = self._post("/run", {"source": "demo", "series": "demo-1", "lang": "fr", "mock_llm": True, "out": tmp})

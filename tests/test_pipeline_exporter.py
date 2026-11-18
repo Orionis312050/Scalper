@@ -93,6 +93,17 @@ class TestExporter(unittest.TestCase):
         with self.assertRaises(KeyError):
             get_adapter("inconnu")
 
+    def test_run_pipeline_reports_steps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            steps = []
+            res = pipeline.run_pipeline("demo", "demo-1", "fr", out_root=tmp, mock_llm=True,
+                                        zip_export=True, on_step=steps.append)
+            self.assertEqual(res["status"], "done")
+            self.assertIn("fetch", steps)
+            self.assertIn("translate", steps)
+            self.assertEqual(steps[-2:], ["zip", "clean"], steps)
+            self.assertIn("export_zip", res)
+
 
 if __name__ == "__main__":
     unittest.main()

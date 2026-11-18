@@ -44,7 +44,8 @@ chapitre contient des images (désactivable avec `--no-ocr` / `"with_ocr": false
 l'OCR extrait les régions texte des images (`ocr.json`, avec le quadrilatère `poly` quand le moteur
 le fournit — PaddleOCR), chaque texte détecté est traduit par le LLM, puis `typeset` efface le texte
 original (**inpainting**, voir moteurs ci-dessous) et redessine la traduction au même endroit,
-centrée, avec une couleur contrastée avec le fond (Pillow). Résultat : `export/images-<lang>/`.
+centrée, à la taille du texte d'origine (hauteur de la boîte OCR), avec une couleur contrastée
+avec le fond (Pillow). Résultat : `export/images-<lang>/`.
 
 La langue source de l'OCR est déduite de la langue détectée du chapitre (`en→eng`, `fr→fra`,
 `ja→jpn`…). L'image Docker n'embarque que `eng` (`tesseract-ocr` inclut `tesseract-ocr-eng`) :

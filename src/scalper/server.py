@@ -3,7 +3,7 @@
 Endpoints :
 - GET  /healthz
 - GET  /            interface web (barre de progression + previews source/traduit)
-- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"inpaint_engine"?,"zip_export"?,"force"?,"out"?,"background"?}
+- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"ocr_engine"?,"inpaint_engine"?,"zip_export"?,"force"?,"out"?,"background"?}
              avec "background": true -> 202 {"job": id} et le run tourne en thread
 - GET  /jobs/<id>  état du job {status, progress{done,total,current}, result, error}
 - GET  /api/chapter?out=&source=&series=&chapter=&lang=  données de preview (meta, blocs source/traduits, images)
@@ -105,6 +105,7 @@ def _start_job(body: dict) -> str:
                 force=bool(body.get("force", False)),
                 src_lang=body.get("src_lang"),
                 inpaint_engine=body.get("inpaint_engine"),
+                ocr_engine=body.get("ocr_engine"),
                 zip_export=bool(body.get("zip_export", False)),
                 on_progress=on_progress,
             )
@@ -416,6 +417,7 @@ class Handler(BaseHTTPRequestHandler):
                 force=bool(body.get("force", False)),
                 src_lang=body.get("src_lang"),
                 inpaint_engine=body.get("inpaint_engine"),
+                ocr_engine=body.get("ocr_engine"),
                 zip_export=bool(body.get("zip_export", False)),
             )
         except KeyError as e:

@@ -207,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if getattr(args, "engine", None):
             os.environ["SCALPER_OCR_ENGINE"] = args.engine
-        client = FakeOCR() if args.mock_ocr else default_ocr_client(lang=args.lang)
+        client = FakeOCR() if args.mock_ocr else default_ocr_client(lang=args.lang, engine=args.engine)
         regions = ocr_chapter(Path(args.chapter_dir), client, lang=args.lang)
         _print({"status": "ok", "regions": len(regions), "out": str(Path(args.chapter_dir) / "ocr.json")})
         return 0
@@ -243,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             out_root=Path(args.out), mock_llm=args.mock_llm,
             max_chapters=args.max_chapters, group=args.group, with_ocr=args.with_ocr,
             force=args.force, src_lang=args.src_lang, inpaint_engine=args.inpaint_engine,
-            zip_export=args.zip_export,
+            ocr_engine=args.ocr_engine, zip_export=args.zip_export,
         )
         _print(summary)
         return 0 if summary.get("status") == "done" else 3

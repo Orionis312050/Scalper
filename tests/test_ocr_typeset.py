@@ -34,6 +34,14 @@ class TestEngineSelection(unittest.TestCase):
         with mock.patch.dict(os.environ, {"SCALPER_OCR_ENGINE": "paddle"}):
             self.assertIsInstance(default_ocr_client(), PaddleOCR)
 
+    def test_explicit_engine_param_wins_over_env(self):
+        from scalper.ocr import PaddleOCR, TesseractOCR, default_ocr_client
+
+        with mock.patch.dict(os.environ, {"SCALPER_OCR_ENGINE": "paddle"}):
+            self.assertIsInstance(default_ocr_client(engine="tesseract"), TesseractOCR)
+        with mock.patch.dict(os.environ, {"SCALPER_OCR_ENGINE": "tesseract"}):
+            self.assertIsInstance(default_ocr_client(engine="paddle"), PaddleOCR)
+
 
 class TestPaddleOCRMapping(unittest.TestCase):
     def test_recognize_maps_polys_to_xywh_and_filters_low_conf(self):
@@ -115,6 +123,22 @@ class TestPaddleOCRMapping(unittest.TestCase):
                 out = pipeline._run_ocr_typeset(d, {"language": "en"}, "fr", FakeLLM(), {})
         self.assertTrue(out.startswith("erreur"), out)
         self.assertIn("boom", out)
+
+    def test_pipeline_forwards_ocr_engine_param(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "images").mkdir()
+            seen = {}
+
+            def fake_client(lang="eng", engine=None):
+                seen["lang"] = lang
+                seen["engine"] = engine
+                return FakeOCR({"p1.png": []})
+
+            with mock.patch("scalper.ocr.default_ocr_client", side_effect=fake_client):
+                out = pipeline._run_ocr_typeset(d, {"language": "en"}, "fr", FakeLLM(), {}, ocr_engine="paddle")
+        self.assertEqual(seen["engine"], "paddle")
+        self.assertTrue(out.startswith("skipped"), out)  # aucune région -> skipped, pas d'erreur
 
 
 class TestTesseractBoxFormat(unittest.TestCase):

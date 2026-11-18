@@ -31,6 +31,7 @@ def run_pipeline(
     on_progress: Callable[[int, int, Any], None] | None = None,
     src_lang: str | None = None,
     inpaint_engine: str | None = None,
+    ocr_engine: str | None = None,
     zip_export: bool = False,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
@@ -78,7 +79,8 @@ def run_pipeline(
                 for fmt in ("md", "json", "html"):
                     export_chapter(translated, fmt, dest / "export")
                 if with_ocr:
-                    entry["ocr"] = _run_ocr_typeset(dest, meta, lang, client, glossary, inpaint_engine=inpaint_engine)
+                    entry["ocr"] = _run_ocr_typeset(dest, meta, lang, client, glossary,
+                                                    inpaint_engine=inpaint_engine, ocr_engine=ocr_engine)
                 state.mark_done(ref.id)
                 entry["status"] = "ok"
                 if not report["pass"]:
@@ -107,10 +109,11 @@ _TESSERACT_LANGS = {
 
 
 def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMClient, glossary: dict[str, str],
-                     inpaint_engine: str | None = None) -> str:
+                     inpaint_engine: str | None = None, ocr_engine: str | None = None) -> str:
     """OCR des images du chapitre, traduction des textes détectés via le LLM, puis
     remplacement dans les images (inpainting + retypographie) -> export/images-<lang>/.
-    `inpaint_engine` : moteur d'inpainting (simple|lama|auto, défaut SCALPER_INPAINT_ENGINE)."""
+    `inpaint_engine` : moteur d'inpainting (simple|lama|auto, défaut SCALPER_INPAINT_ENGINE) ;
+    `ocr_engine` : moteur OCR (tesseract|paddle, défaut SCALPER_OCR_ENGINE)."""
     from .inpaint import default_inpainter
     from .ocr import default_ocr_client, ocr_chapter
     from .typeset import typeset_chapter
@@ -121,7 +124,7 @@ def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMCli
         return msg
     try:
         src_lang = _TESSERACT_LANGS.get(str(meta.get("language") or "en")[:2].lower(), "eng")
-        regions = ocr_chapter(dest, default_ocr_client(src_lang), lang=src_lang)
+        regions = ocr_chapter(dest, default_ocr_client(src_lang, engine=ocr_engine), lang=src_lang)
         if not regions:
             msg = "skipped : aucun texte détecté dans les images"
             print(f"[scalper][ocr] {dest.name}: {msg}", file=sys.stderr)

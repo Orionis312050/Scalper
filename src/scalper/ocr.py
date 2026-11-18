@@ -124,9 +124,10 @@ class PaddleOCR:
         return regions
 
 
-def default_ocr_client(lang: str = "eng") -> OCRClient:
-    """Moteur OCR par défaut : SCALPER_OCR_ENGINE=paddle -> PaddleOCR, sinon Tesseract."""
-    engine = os.environ.get("SCALPER_OCR_ENGINE", "tesseract").strip().lower()
+def default_ocr_client(lang: str = "eng", engine: str | None = None) -> OCRClient:
+    """Moteur OCR : `engine` explicite, sinon SCALPER_OCR_ENGINE=paddle -> PaddleOCR,
+    sinon Tesseract (défaut)."""
+    engine = (engine or os.environ.get("SCALPER_OCR_ENGINE", "tesseract")).strip().lower()
     if engine == "paddle":
         return PaddleOCR(lang=lang)
     return TesseractOCR(lang=lang)

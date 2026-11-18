@@ -117,6 +117,8 @@ et celui du modèle LaMa vers `/app/data/.lama` via `SCALPER_LAMA_CACHE` :
 les modèles ne sont téléchargés qu'une fois, dans le volume monté.
 
 `POST /run` accepte en plus `"src_lang": "ja"` (langue d'entrée du chapitre),
+`"ocr_engine": "paddle"` (moteur OCR : `tesseract` | `paddle`, défaut `SCALPER_OCR_ENGINE` ou `tesseract` —
+`paddle` dans le docker-compose),
 `"inpaint_engine": "lama"` (moteur d'inpainting : `simple` | `lama` | `auto`) et
 `"zip_export": true` (zip `export-<date>-<heure>-<minutes>.zip` à la fin, puis supprime le reste de `out/`).
 

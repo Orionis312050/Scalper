@@ -31,6 +31,7 @@ def run_pipeline(
     on_progress: Callable[[int, int, Any], None] | None = None,
     src_lang: str | None = None,
     inpaint_engine: str | None = None,
+    zip_export: bool = False,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
     fetcher = fetcher or RespectfulFetcher(min_delay=1.0)
@@ -89,7 +90,13 @@ def run_pipeline(
             on_progress(len(results), len(chapters), ref)
 
     save_glossary(glossary_path, glossary)
-    return {"status": "done", "source": source_id, "series": series_id, "lang": lang, "chapters": results}
+    summary: dict[str, Any] = {"status": "done", "source": source_id, "series": series_id, "lang": lang, "chapters": results}
+    if zip_export:
+        from .packager import zip_run_export
+
+        chapter_ids = [r["chapter"]["id"] for r in results if "chapter" in r]
+        summary["export_zip"] = str(zip_run_export(out_root, source_id, series_id, lang, chapter_ids))
+    return summary
 
 
 # Langue détectée (2 lettres) -> code langue Tesseract

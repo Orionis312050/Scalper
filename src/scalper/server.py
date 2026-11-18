@@ -3,7 +3,7 @@
 Endpoints :
 - GET  /healthz
 - GET  /            interface web (barre de progression + previews source/traduit)
-- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"inpaint_engine"?,"force"?,"out"?,"background"?}
+- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"inpaint_engine"?,"zip_export"?,"force"?,"out"?,"background"?}
              avec "background": true -> 202 {"job": id} et le run tourne en thread
 - GET  /jobs/<id>  état du job {status, progress{done,total,current}, result, error}
 - GET  /api/chapter?out=&source=&series=&chapter=&lang=  données de preview (meta, blocs source/traduits, images)
@@ -105,6 +105,7 @@ def _start_job(body: dict) -> str:
                 force=bool(body.get("force", False)),
                 src_lang=body.get("src_lang"),
                 inpaint_engine=body.get("inpaint_engine"),
+                zip_export=bool(body.get("zip_export", False)),
                 on_progress=on_progress,
             )
             job["result"] = summary
@@ -163,7 +164,8 @@ blockquote{margin:.3rem 0;padding:.2rem .6rem;border-left:3px solid #888;color:#
 <input id="r-max" placeholder="max chapitres (optionnel)">
 <label><input type="checkbox" id="r-mock" style="width:auto"> mock-llm (démo hors ligne)</label>
 <label><input type="checkbox" id="r-force" style="width:auto"> forcer l'export même si la QA échoue</label>
-<label><input type="checkbox" id="r-ocr" checked style="width:auto"> OCR + remplacement du texte dans les images (auto)</label><br>
+<label><input type="checkbox" id="r-ocr" checked style="width:auto"> OCR + remplacement du texte dans les images (auto)</label>
+<label><input type="checkbox" id="r-zip" style="width:auto"> zip export-<date>-<heure>-<minutes>.zip à la fin (images + PDF, le reste de out/ est supprimé)</label><br>
 <button onclick="runPipeline()">Lancer le pipeline</button>
 </fieldset>
 <div id="progress-wrap"><div id="bar"></div></div>
@@ -180,7 +182,7 @@ async function doLogin(){ const r=await fetch('/login',{method:'POST',headers:{'
 if(TOKEN) hideLogin(); else showLogin();
 async function runPipeline(){
   const g=document.getElementById('r-group').value, m=document.getElementById('r-max').value, sl=document.getElementById('r-srclang').value;
-  const body={source:document.getElementById('r-source').value, series:document.getElementById('r-series').value, lang:document.getElementById('r-lang').value, mock_llm:document.getElementById('r-mock').checked, force:document.getElementById('r-force').checked, with_ocr:document.getElementById('r-ocr').checked, background:true};
+  const body={source:document.getElementById('r-source').value, series:document.getElementById('r-series').value, lang:document.getElementById('r-lang').value, mock_llm:document.getElementById('r-mock').checked, force:document.getElementById('r-force').checked, with_ocr:document.getElementById('r-ocr').checked, zip_export:document.getElementById('r-zip').checked, background:true};
   if(g) body.group=g; if(m) body.max_chapters=Number(m); if(sl) body.src_lang=sl;
   document.getElementById('out').textContent='en cours…';
   document.getElementById('previews').innerHTML='';
@@ -414,6 +416,7 @@ class Handler(BaseHTTPRequestHandler):
                 force=bool(body.get("force", False)),
                 src_lang=body.get("src_lang"),
                 inpaint_engine=body.get("inpaint_engine"),
+                zip_export=bool(body.get("zip_export", False)),
             )
         except KeyError as e:
             return self._json(400, {"error": f"champ requis manquant: {e}"})

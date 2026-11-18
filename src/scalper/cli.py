@@ -1,4 +1,4 @@
-"""CLI Scalper : list-series, list-groups, list-chapters, fetch, fetch-url, clean, translate, qa, export, ocr, typeset, serve, run."""
+"""CLI Scalper : list-series, list-groups, list-chapters, fetch, fetch-url, clean, translate, qa, export, ocr, typeset, pack, serve, run."""
 
 from __future__ import annotations
 
@@ -88,6 +88,14 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--inpaint-engine", choices=["simple", "lama", "auto"], default=None,
                    help="moteur d'inpainting pour la suppression du texte (défaut: SCALPER_INPAINT_ENGINE ou auto)")
 
+    c = sub.add_parser("pack", help="zippe un out/ existant : export-<date>-<heure>-<minutes>.zip (images + PDF), puis supprime le reste de out/ sauf --no-clean")
+    c.add_argument("--out", default="out")
+    c.add_argument("--source", required=True)
+    c.add_argument("--series", required=True)
+    c.add_argument("--lang", required=True)
+    c.add_argument("--chapters", default=None, help="ids de chapitres séparés par des virgules (défaut: tous les chapitres de la série)")
+    c.add_argument("--no-clean", action="store_true", help="garde le reste du dossier out/ (seul le zip est ajouté)")
+
     c = sub.add_parser("serve", help="démarre le serveur HTTP (déploiement Docker/Coolify)")
     c.add_argument("--host", default="127.0.0.1")
     c.add_argument("--port", type=int, default=8000)
@@ -106,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="moteur OCR (défaut: SCALPER_OCR_ENGINE ou tesseract)")
     c.add_argument("--inpaint-engine", choices=["simple", "lama", "auto"], default=None,
                    help="moteur d'inpainting pour la suppression du texte (défaut: SCALPER_INPAINT_ENGINE ou auto)")
+    c.add_argument("--zip-export", action="store_true",
+                   help="à la fin du run : zip export-<date>-<heure>-<minutes>.zip dans out/ (images + PDF par chapitre), puis supprime le reste de out/")
     c.add_argument("--force", action="store_true", help="exporte même si la QA échoue (bypass vérification)")
     c.add_argument("--src-lang", default=None, help="langue d'entrée du chapitre (en, ja, fr…) : enregistrée dans meta.json et utilisée pour l'OCR")
 
@@ -211,6 +221,13 @@ def main(argv: list[str] | None = None) -> int:
                                   inpainter=default_inpainter(args.inpaint_engine))
         _print({"status": "ok", "images": outputs})
         return 0
+    if args.cmd == "pack":
+        from .packager import zip_run_export
+
+        ids = [c.strip() for c in args.chapters.split(",") if c.strip()] if args.chapters else None
+        zip_path = zip_run_export(args.out, args.source, args.series, args.lang, chapter_ids=ids, clean=not args.no_clean)
+        _print({"status": "ok", "zip": str(zip_path), "clean": not args.no_clean})
+        return 0
     if args.cmd == "serve":
         from .server import serve
 
@@ -226,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             out_root=Path(args.out), mock_llm=args.mock_llm,
             max_chapters=args.max_chapters, group=args.group, with_ocr=args.with_ocr,
             force=args.force, src_lang=args.src_lang, inpaint_engine=args.inpaint_engine,
+            zip_export=args.zip_export,
         )
         _print(summary)
         return 0 if summary.get("status") == "done" else 3

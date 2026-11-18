@@ -34,7 +34,8 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 | `scalper translate <chapter.json> --lang fr [--mock-llm]` | traduction LLM + glossaire |
 | `scalper qa <source.json> <traduit.json> --lang fr` | score 0-100, pass si ≥ 80 |
 | `scalper export <traduit.json> --format md\|json\|html` | export Markdown / JSON / HTML |
-| `scalper run --source ... --series ... --lang fr [--force] [--src-lang ja]` | pipeline complet end-to-end (`--force` = exporte même si la QA échoue ; `--src-lang` = langue d'entrée du chapitre : enregistrée dans `meta.json`, affichée dans l'UI et utilisée comme langue source de l'OCR) |
+| `scalper run --source ... --series ... --lang fr [--force] [--src-lang ja] [--zip-export]` | pipeline complet end-to-end (`--force` = exporte même si la QA échoue ; `--src-lang` = langue d'entrée du chapitre : enregistrée dans `meta.json`, affichée dans l'UI et utilisée comme langue source de l'OCR ; `--zip-export` = zip final dans `out/`, voir ci-dessous) |
+| `scalper pack --out out --source mangadex --series <id> --lang fr [--no-clean]` | zippe un `out/` existant (même contenu qu'avec `--zip-export`) |
 
 ## OCR & remplacement du texte dans les images (automatique)
 
@@ -65,6 +66,22 @@ PaddleOCR : l'image Docker embarque déjà les deux moteurs (`pip install ".[ocr
 vérifié localement : 3.3.1 crashe, 3.2.2 fonctionne.
 
 Commandes manuelles : `scalper ocr <chapter_dir> [--mock-ocr]` et `scalper typeset <chapter_dir> --lang fr [--inpaint-engine lama]`.
+
+## Export zip (images + PDF)
+
+Avec `scalper run ... --zip-export` (ou `"zip_export": true` dans `POST /run`, case à cocher dans
+l'UI), ou à tout moment avec `scalper pack --out out --source <src> --series <id> --lang fr`,
+Scalper crée à la fin dans le dossier `out/` un **seul zip** nommé
+`export-<AAAA-MM-JJ-HH-MM>.zip` (date/heure/minutes locales) contenant :
+
+- `images/<chapitre>/<page>` : les pages du résultat — re-traduites (`export/images-<lang>/`)
+  quand l'OCR/typeset a tourné, sinon les images d'origine — dans l'ordre des pages (tri naturel) ;
+- `pdf/<chapitre>.pdf` : un PDF par chapitre (Pillow, sans dépendance externe ; pages en RGB
+  redimensionnées à 1600 px max).
+
+Puis **tout le reste du dossier `out/` est supprimé** (zip excepté — y compris `state.json` et
+`glossary.json` : pas de reprise après un export zippé). `scalper pack --no-clean` garde le reste.
+Le chemin du zip est renvoyé dans le résumé du run (`export_zip`).
 
 **Moteurs d'inpainting** (protocol `Inpainter` dans `src/scalper/inpaint.py`, sélection par
 `SCALPER_INPAINT_ENGINE` ou `--inpaint-engine`, et `"inpaint_engine"` dans `POST /run`) :
@@ -99,8 +116,9 @@ temp) est redirigé vers `/app/data/.paddlex` via `PADDLE_PDX_CACHE_HOME` dans `
 et celui du modèle LaMa vers `/app/data/.lama` via `SCALPER_LAMA_CACHE` :
 les modèles ne sont téléchargés qu'une fois, dans le volume monté.
 
-`POST /run` accepte en plus `"src_lang": "ja"` (langue d'entrée du chapitre) et
-`"inpaint_engine": "lama"` (moteur d'inpainting : `simple` | `lama` | `auto`).
+`POST /run` accepte en plus `"src_lang": "ja"` (langue d'entrée du chapitre),
+`"inpaint_engine": "lama"` (moteur d'inpainting : `simple` | `lama` | `auto`) et
+`"zip_export": true` (zip `export-<date>-<heure>-<minutes>.zip` à la fin, puis supprime le reste de `out/`).
 
 ## Architecture
 

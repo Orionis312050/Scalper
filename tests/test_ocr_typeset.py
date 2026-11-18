@@ -167,6 +167,17 @@ class TestOCRTypeset(unittest.TestCase):
             colors = img.getcolors(maxcolors=100000)
             self.assertGreater(len(colors), 2, "le texte redessiné doit modifier des pixels")
 
+    def test_fit_font_uses_full_original_box_height(self):
+        img = Image.new("RGB", (10, 10))
+        d = ImageDraw.Draw(img)
+        from scalper.typeset import _fit_font
+        font, size, lines = _fit_font(d, "Bonjour", 380, 40)
+        self.assertEqual(size, 38, "taille max = hauteur de boîte OCR - 2 (même taille que l'original)")
+        self.assertEqual(lines, ["Bonjour"])
+        _, size2, lines2 = _fit_font(d, "Une traduction beaucoup plus longue que l'original", 120, 30)
+        self.assertLess(size2, 28)
+        self.assertGreater(len(lines2), 1)
+
     def test_wrap_text(self):
         img = Image.new("RGB", (10, 10))
         d = ImageDraw.Draw(img)

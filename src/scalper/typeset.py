@@ -40,6 +40,24 @@ def wrap_text(draw, text: str, font, max_width: int) -> list[str]:
     return lines or [""]
 
 
+def _fit_font(draw, text: str, max_w: int, max_h: int) -> tuple[Any, int, list[str]]:
+    """Plus grande police (>= 8) tenant dans max_w x max_h : renvoie (font, taille, lignes).
+    On part de la hauteur max (la boîte OCR ≈ la hauteur du texte d'origine), puis on
+    réduit jusqu'à tenir en largeur ET en hauteur."""
+    font_size = max(8, max_h - 2)
+    font = _load_font(font_size)
+    lines = wrap_text(draw, text, font, max(10, max_w - 8))
+    while font_size > 8:
+        too_tall = (font_size + 2) * len(lines) > max_h
+        too_wide = max(draw.textlength(ln, font=font) for ln in lines) > max_w - 8
+        if not too_tall and not too_wide:
+            break
+        font_size -= 1
+        font = _load_font(font_size)
+        lines = wrap_text(draw, text, font, max(10, max_w - 8))
+    return font, font_size, lines
+
+
 def _text_colors(fill_rgb: tuple[int, int, int]) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     """Couleur de texte + contour contrastées avec le fond (luminance)."""
     lum = 0.299 * fill_rgb[0] + 0.587 * fill_rgb[1] + 0.114 * fill_rgb[2]
@@ -89,19 +107,8 @@ def replace_texts(
         x, y, w, h = r["box"]
         fill_rgb = estimate_bg_color(img, [x, y, w, h])
         text_fill, stroke_fill = _text_colors(fill_rgb)
-        # taille de départ proche du texte original (hauteur de boîte ≈ hauteur de ligne)
-        font_size = max(8, int(h * 0.8))
-        font = _load_font(font_size)
-        lines = wrap_text(draw, text, font, max(10, w - 8))
-        # on réduit jusqu'à tenir dans la boîte, en largeur ET en hauteur
-        while font_size > 8:
-            too_tall = (font_size + 2) * len(lines) > h
-            too_wide = max(draw.textlength(ln, font=font) for ln in lines) > w - 8
-            if not too_tall and not too_wide:
-                break
-            font_size -= 1
-            font = _load_font(font_size)
-            lines = wrap_text(draw, text, font, max(10, w - 8))
+        # même taille que le texte d'origine : on part de la hauteur de la boîte OCR
+        font, font_size, lines = _fit_font(draw, text, w, h)
         line_h = font_size + 2
         ty = y + max(0, (h - line_h * len(lines)) // 2)
         for ln in lines:

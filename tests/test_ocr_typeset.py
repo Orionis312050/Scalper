@@ -107,6 +107,62 @@ class TestPaddleOCRMapping(unittest.TestCase):
         self.assertEqual([r["text"] for r in full], ["Hello", "World"])
         self.assertEqual(full[0]["box"], [100, 50, 30, 20])
 
+    def test_recognize_normalizes_polys_to_image_size(self):
+        """Sur grande image, PaddleOCR peut renvoyer des coordonnées hors image
+        (espace redimensionné du modèle det) : on les rescale dans l'image."""
+        from scalper.ocr import PaddleOCR, _normalize_polys
+
+        # _normalize_polys : rescale uniforme si dépassement, clamp dans l'image
+        img_size = (690, 10000)
+        polys = [[[0, 0], [1380, 0], [1380, 20000], [0, 20000]]]  # espace 2x
+        out = _normalize_polys(polys, img_size)
+        max_x = max(p[0] for q in out for p in q)
+        max_y = max(p[1] for q in out for p in q)
+        self.assertAlmostEqual(max_x, 690, delta=1)   # 1380 * (1/2)
+        self.assertAlmostEqual(max_y, 10000, delta=1)  # 20000 * (1/2)
+        # sans dépassement : inchangé
+        polys2 = [[[0, 0], [100, 0], [100, 50], [0, 50]]]
+        self.assertEqual(_normalize_polys(polys2, (690, 10000)), polys2)
+
+    def test_recognize_scales_boxes_back_into_image(self):
+        """recognize() applique la normalisation à box + poly (image réelle créée avec PIL)."""
+        from scalper.ocr import PaddleOCR
+
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow requis")
+
+        class FakeEngine:
+            def __init__(self, **kw):
+                pass
+
+            def predict(self, path):
+                # coordonnées dans un espace 2x plus grand que l'image (690x500)
+                return [{
+                    "rec_texts": ["Hello"],
+                    "rec_scores": [0.95],
+                    "dt_polys": [[[200, 100], [1380, 100], [1380, 1000], [200, 1000]]],
+                }]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "p.png"
+            Image.new("RGB", (690, 500), (255, 255, 255)).save(p)
+            fake_mod = types.ModuleType("paddleocr")
+            fake_mod.PaddleOCR = FakeEngine
+            with mock.patch.dict(sys.modules, {"paddleocr": fake_mod}):
+                regions = PaddleOCR().recognize(p)
+        self.assertEqual(len(regions), 1)
+        x, y, w, h = regions[0]["box"]
+        self.assertLessEqual(x + w, 690, "box dans l'image")
+        self.assertLessEqual(y + h, 500, "box dans l'image")
+        self.assertTrue(all(0 <= px <= 690 and 0 <= py <= 500 for px, py in regions[0]["poly"]))
+        # échelle 1/2 (espace 2x) : box ~ [100, 50, 590, 450]
+        self.assertAlmostEqual(x, 100, delta=5)
+        self.assertAlmostEqual(y, 50, delta=5)
+        self.assertAlmostEqual(w, 590, delta=10)
+        self.assertAlmostEqual(h, 450, delta=10)
+
     def test_missing_paddle_raises_clear_error(self):
         from scalper.ocr import PaddleOCR
 

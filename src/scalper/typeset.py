@@ -73,6 +73,28 @@ def _text_colors(fill_rgb: tuple[int, int, int]) -> tuple[tuple[int, int, int], 
     return (255, 255, 255), (0, 0, 0)
 
 
+def _clamp_regions(regions: list[dict[str, Any]], width: int, height: int) -> list[dict[str, Any]]:
+    """Clamp défensif des boîtes dans l'image : si une boîte OCR dépasse du canvas,
+    on la ramène dans l'image (évite de dessiner / inpainter hors image)."""
+    out = []
+    for r in regions:
+        box = r.get("box")
+        if not box or len(box) != 4:
+            continue
+        try:
+            x, y, w, h = (int(v) for v in box)
+        except (TypeError, ValueError):
+            continue
+        x0 = max(0, min(x, max(0, width - 1)))
+        y0 = max(0, min(y, max(0, height - 1)))
+        x1 = min(width, x + w)
+        y1 = min(height, y + h)
+        if x1 - x0 < 1 or y1 - y0 < 1:
+            continue
+        out.append({**r, "box": [x0, y0, x1 - x0, y1 - y0]})
+    return out
+
+
 def _todo_regions(regions: list[dict[str, Any]], translations: list[str]) -> list[tuple[dict[str, Any], str]]:
     """Régions à retyper : index valide, traduction non vide et différente du texte
     original, boîte assez grande (sinon c'est du bruit OCR)."""
@@ -99,7 +121,7 @@ def inpaint_image_file(image_path: Path, regions: list[dict[str, Any]], out_path
 
     Image.MAX_IMAGE_PIXELS = None
     img = Image.open(image_path).convert("RGB")
-    valid = [r for r in regions if r.get("box") and len(r["box"]) == 4 and r["box"][2] >= 8 and r["box"][3] >= 8]
+    valid = [r for r in _clamp_regions(regions, img.width, img.height) if r["box"][2] >= 8 and r["box"][3] >= 8]
     if valid:
         img = inpainter.inpaint_image(img, valid).convert("RGB")
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,6 +153,7 @@ def replace_texts(
     img = Image.open(image_path).convert("RGB")
     if inpainter is None:
         inpainter = default_inpainter()
+    regions = _clamp_regions(regions, img.width, img.height)
     todo = _todo_regions(regions, translations)
     if todo and inpainter is not _DRAW_ONLY:
         img = inpainter.inpaint_image(img, [r for r, _ in todo]).convert("RGB")

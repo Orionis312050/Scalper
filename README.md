@@ -44,7 +44,9 @@ chapitre contient des images (désactivable avec `--no-ocr` / `"with_ocr": false
 (loguées `1/4`…`4/4`) :
 
 1. **OCR** : extraction du texte brut des bulles (`ocr.json`, avec le quadrilatère `poly` quand le
-   moteur le fournit — PaddleOCR) ;
+   moteur le fournit — PaddleOCR). Les coordonnées renvoyées par PaddleOCR sont **normalisées dans le
+   référentiel de l'image réelle** (sur les très grandes pages, le modèle de détection redimensionne
+   en interne et peut renvoyer des coordonnées hors image → rescale uniforme + clamp) ;
 2. **traduction** de chaque texte détecté par le LLM ;
 3. **inpainting** du texte original sur les images **brutes** (voir moteurs ci-dessous — LaMa efface
    le texte entièrement, masque = polygone OCR dilaté, style « pinceau magique » ; seuls les pixels

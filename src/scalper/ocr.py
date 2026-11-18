@@ -68,6 +68,47 @@ _PADDLE_LANGS = {
 }
 
 
+def _image_size(path: Path) -> tuple[int, int] | None:
+    """Taille (w, h) réelle de l'image, ou None si illisible (tests avec chemins factices)."""
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            return im.size
+    except Exception:
+        return None
+
+
+def _normalize_polys(polys: list, img_size: tuple[int, int] | None) -> list:
+    """Ramène les polygones dans le référentiel de l'image.
+
+    Sur les très grandes images, le modèle de détection de PaddleOCR redimensionne
+    l'entrée en interne (max_side_limit) et peut renvoyer des coordonnées dans un
+    espace plus grand que l'image : on rescale alors uniformément (préserve l'aspect)
+    par 1/k avec k = max dépassement relatif, puis on clamp dans l'image. Sans
+    dépassement (coordonnées déjà dans l'image), rien ne change."""
+    polys = _as_list(polys)
+    if not img_size or not polys:
+        return polys
+    img_w, img_h = img_size
+    if img_w <= 0 or img_h <= 0:
+        return polys
+    try:
+        max_x = max(float(p[0]) for poly in polys for p in poly)
+        max_y = max(float(p[1]) for poly in polys for p in poly)
+        k = max(max_x / img_w, max_y / img_h, 1.0)
+        s = 1.0 / k
+        return [
+            [
+                [min(max(float(p[0]) * s, 0.0), float(img_w)), min(max(float(p[1]) * s, 0.0), float(img_h))]
+                for p in poly
+            ]
+            for poly in polys
+        ]
+    except (TypeError, ValueError, IndexError):
+        return polys  # format inattendu : on ne touche à rien
+
+
 class PaddleOCR:
     """OCR via PaddleOCR (gratuit, 100 % local, meilleur sur texte stylisé/bulles).
 
@@ -94,7 +135,7 @@ class PaddleOCR:
             return []
         if not isinstance(results, (list, tuple)):
             results = [results]
-        regions: list[dict[str, Any]] = []
+        raw: list[tuple[str, float, list]] = []
         for res in results:
             texts = _as_list(res.get("rec_texts"))
             scores = _as_list(res.get("rec_scores"))
@@ -109,16 +150,21 @@ class PaddleOCR:
                     score = -1.0
                 if not text or score < 0.6:
                     continue
-                xs = [p[0] for p in poly]
-                ys = [p[1] for p in poly]
-                x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
-                regions.append({
-                    "image": image_path.name,
-                    "box": [int(x0), int(y0), max(1, int(x1 - x0)), max(1, int(y1 - y0))],
-                    "text": text,
-                    # quadrilatère du texte : masque plus fidèle pour l'inpainting LaMa
-                    "poly": [[int(px), int(py)] for px, py in poly],
-                })
+                raw.append((text, score, [list(p) for p in poly]))
+        # coordonnées -> référentiel de l'image réelle (voir _normalize_polys)
+        norm = _normalize_polys([poly for _, _, poly in raw], _image_size(image_path))
+        regions: list[dict[str, Any]] = []
+        for (text, _score, _poly), poly in zip(raw, norm):
+            xs = [p[0] for p in poly]
+            ys = [p[1] for p in poly]
+            x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+            regions.append({
+                "image": image_path.name,
+                "box": [int(x0), int(y0), max(1, int(x1 - x0)), max(1, int(y1 - y0))],
+                "text": text,
+                # quadrilatère du texte : masque plus fidèle pour l'inpainting LaMa
+                "poly": [[int(px), int(py)] for px, py in poly],
+            })
         for i, r in enumerate(regions):
             r["index"] = i
         return regions

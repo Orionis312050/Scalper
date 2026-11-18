@@ -1,5 +1,9 @@
-"""Remplacement du texte dans les images : inpainting de la bulle (voir inpaint.py :
-remplissage simple ou LaMa) + retypographie de la traduction (Pillow).
+"""Remplacement du texte dans les images, en deux étapes :
+
+3. inpainting (voir inpaint.py : remplissage simple ou LaMa) du texte original sur
+   l'image brute → `export/images-clean/` ;
+4. retypographie de la traduction (Pillow) par-dessus, centrée dans la boîte
+   d'origine, à la taille du texte d'origine (hauteur de boîte OCR) → `export/images-<lang>/`.
 """
 
 from __future__ import annotations
@@ -8,6 +12,9 @@ import json
 import shutil
 from pathlib import Path
 from typing import Any
+
+# sentinel interne : replace_texts sans inpainting (image déjà nettoyée, ex. images-clean)
+_DRAW_ONLY = object()
 
 
 def _load_font(size: int):
@@ -43,7 +50,7 @@ def wrap_text(draw, text: str, font, max_width: int) -> list[str]:
 def _fit_font(draw, text: str, max_w: int, max_h: int) -> tuple[Any, int, list[str]]:
     """Plus grande police (>= 8) tenant dans max_w x max_h : renvoie (font, taille, lignes).
     On part de la hauteur max (la boîte OCR ≈ la hauteur du texte d'origine), puis on
-    réduit jusqu'à tenir en largeur ET en hauteur."""
+    réduit jusqu'à tenir en largeur ET en hauteur → la bonne taille pour chaque bulle."""
     font_size = max(8, max_h - 2)
     font = _load_font(font_size)
     lines = wrap_text(draw, text, font, max(10, max_w - 8))
@@ -66,28 +73,9 @@ def _text_colors(fill_rgb: tuple[int, int, int]) -> tuple[tuple[int, int, int], 
     return (255, 255, 255), (0, 0, 0)
 
 
-def replace_texts(
-    image_path: Path,
-    regions: list[dict[str, Any]],
-    translations: list[str],
-    out_path: Path,
-    inpainter=None,
-) -> Path:
-    """Remplace le texte des `regions` (index → translations[index]) dans l'image.
-
-    Phase 1 : `inpainter` (défaut `default_inpainter()`) efface le texte original de
-    toutes les régions à traduire (remplissage simple ou inpainting LaMa) ; phase 2 :
-    la traduction est redessinée par-dessus, centrée dans la boîte d'origine.
-    """
-    from PIL import Image, ImageDraw
-
-    from .inpaint import default_inpainter, estimate_bg_color
-
-    # Les pages manga peuvent être très grandes : on désactive la limite
-    # anti-decompression-bomb de PIL (les images viennent de nos propres chapitres).
-    Image.MAX_IMAGE_PIXELS = None
-    img = Image.open(image_path).convert("RGB")
-    inpainter = inpainter or default_inpainter()
+def _todo_regions(regions: list[dict[str, Any]], translations: list[str]) -> list[tuple[dict[str, Any], str]]:
+    """Régions à retyper : index valide, traduction non vide et différente du texte
+    original, boîte assez grande (sinon c'est du bruit OCR)."""
     todo: list[tuple[dict[str, Any], str]] = []
     for r in regions:
         i = r.get("index")
@@ -100,7 +88,51 @@ def replace_texts(
         if w < 8 or h < 8:
             continue  # mini-région = bruit OCR
         todo.append((r, text))
-    if todo:
+    return todo
+
+
+def inpaint_image_file(image_path: Path, regions: list[dict[str, Any]], out_path: Path, inpainter) -> Path:
+    """Étape 3 : efface le texte original de `regions` sur l'image brute via `inpainter`
+    (LaMa...) et sauve l'image « nettoyée ». Toutes les régions valides sont effacées,
+    même sans traduction (le texte d'origine doit disparaître entièrement)."""
+    from PIL import Image
+
+    Image.MAX_IMAGE_PIXELS = None
+    img = Image.open(image_path).convert("RGB")
+    valid = [r for r in regions if r.get("box") and len(r["box"]) == 4 and r["box"][2] >= 8 and r["box"][3] >= 8]
+    if valid:
+        img = inpainter.inpaint_image(img, valid).convert("RGB")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out_path)
+    return out_path
+
+
+def replace_texts(
+    image_path: Path,
+    regions: list[dict[str, Any]],
+    translations: list[str],
+    out_path: Path,
+    inpainter=None,
+) -> Path:
+    """Remplace le texte des `regions` (index → translations[index]) dans l'image.
+
+    Phase 1 : `inpainter` (défaut `default_inpainter()`) efface le texte original de
+    toutes les régions à traduire (remplissage simple ou inpainting LaMa) ; phase 2 :
+    la traduction est redessinée par-dessus, centrée dans la boîte d'origine, à la
+    taille du texte d'origine (hauteur de boîte OCR). `inpainter=_DRAW_ONLY` : retypographie
+    seule (l'image est déjà nettoyée)."""
+    from PIL import Image, ImageDraw
+
+    from .inpaint import default_inpainter, estimate_bg_color
+
+    # Les pages manga peuvent être très grandes : on désactive la limite
+    # anti-decompression-bomb de PIL (les images viennent de nos propres chapitres).
+    Image.MAX_IMAGE_PIXELS = None
+    img = Image.open(image_path).convert("RGB")
+    if inpainter is None:
+        inpainter = default_inpainter()
+    todo = _todo_regions(regions, translations)
+    if todo and inpainter is not _DRAW_ONLY:
         img = inpainter.inpaint_image(img, [r for r, _ in todo]).convert("RGB")
     draw = ImageDraw.Draw(img)
     for r, text in todo:
@@ -127,22 +159,28 @@ def typeset_chapter(
     ocr_file: str = "ocr.json",
     translations: list[str] | None = None,
     inpainter=None,
+    clean_subdir: str = "export/images-clean",
 ) -> list[str]:
-    """Recrée les images avec le texte traduit → `export/images-<lang>/`.
+    """Étapes 3+4 sur tout le chapitre → `export/images-<lang>/`.
 
-    Si `translations` est fourni (une traduction par région OCR, dans l'ordre), il est
-    utilisé directement ; sinon les blocs texte de `chapter.<lang>.json` servent de
-    traductions (indexés par ordre des régions). `inpainter` (défaut
-    `default_inpainter()`) gère la suppression du texte original avant retypographie.
+    Étape 3 : le texte original est effacé sur les images brutes (inpainting) dans
+    `clean_subdir` (défaut `export/images-clean/`) ; étape 4 : la traduction est
+    redessinée par-dessus. Si `translations` est fourni (une traduction par région
+    OCR, dans l'ordre), il est utilisé directement ; sinon les blocs texte de
+    `chapter.<lang>.json` servent de traductions (indexés par ordre des régions).
     """
+    from .inpaint import default_inpainter
+
     ocr = json.loads((chapter_dir / ocr_file).read_text(encoding="utf-8"))
     if translations is None:
         from .models import Chapter
 
         chapter = Chapter.from_dict(json.loads((chapter_dir / f"chapter.{lang}.json").read_text(encoding="utf-8")))
         translations = [b.text for b in chapter.text_blocks()]
+    inpainter = inpainter if inpainter is not None else default_inpainter()
     images_dir = chapter_dir / "images"
     out_dir = chapter_dir / "export" / f"images-{lang}"
+    clean_dir = chapter_dir / clean_subdir
     outputs: list[str] = []
     if not images_dir.exists():
         return outputs
@@ -152,13 +190,19 @@ def typeset_chapter(
     for name, regions in sorted(by_image.items()):
         src = images_dir / name
         if src.exists():
-            outputs.append(str(replace_texts(src, regions, translations, out_dir / name, inpainter=inpainter)))
-    # pages sans texte détecté : copiées telles quelles pour un export complet
+            # étape 3 : effacement du texte original sur l'image brute
+            clean_path = inpaint_image_file(src, regions, clean_dir / name, inpainter)
+            # étape 4 : retypographie de la traduction sur l'image nettoyée
+            outputs.append(str(replace_texts(clean_path, regions, translations, out_dir / name, inpainter=_DRAW_ONLY)))
+    # pages sans texte détecté : copiées telles quelles (clean + export) pour un export complet
     for p in sorted(images_dir.iterdir()):
         if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp") and p.name not in by_image:
+            for dest_dir in (clean_dir, out_dir):
+                out = dest_dir / p.name
+                if not out.exists():
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(p, out)
             out = out_dir / p.name
-            if not out.exists():
-                out_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(p, out)
+            if out.exists():
                 outputs.append(str(out))
     return outputs

@@ -131,48 +131,99 @@ INDEX_HTML = """<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Scalper</title>
 <style>
-body{font-family:system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;color:#222}
-input,button{padding:.45rem;margin:.2rem}input{width:100%;box-sizing:border-box}
-fieldset{border:1px solid #ccc;border-radius:8px;margin-bottom:1rem}legend{font-weight:600}
-button{cursor:pointer;background:#222;color:#fff;border:0;border-radius:6px}
-pre{background:#f4f4f4;padding:1rem;border-radius:8px;overflow:auto;white-space:pre-wrap}
-#progress-wrap{display:none;height:1.2rem;background:#e5e5e5;border-radius:6px;overflow:hidden;margin:.6rem 0}
-#bar{height:100%;width:0%;background:#2a7d4f;transition:width .3s}
-#bar-label{font-size:.8rem;color:#555;margin-bottom:1rem}
-.chapter{border:1px solid #ddd;border-radius:8px;padding:1rem;margin:1rem 0}
-.cols{display:flex;gap:1rem;flex-wrap:wrap}
+@property --a{syntax:'<angle>';initial-value:0deg;inherits:false}
+:root{--bg:#030303;--card:rgba(255,255,255,.04);--border:rgba(255,255,255,.1);--txt:#e4e4e7;--muted:#a1a1aa;--indigo:#6366f1;--fuchsia:#d946ef;--cyan:#22d3ee}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+/* fond façon Aceternity : grille + aurora dégradée */
+.bg-grid{position:fixed;inset:0;z-index:-2;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:44px 44px;-webkit-mask-image:radial-gradient(ellipse 90% 65% at 50% 0%,#000 55%,transparent 100%);mask-image:radial-gradient(ellipse 90% 65% at 50% 0%,#000 55%,transparent 100%)}
+.bg-aurora{position:fixed;inset:0;z-index:-3;overflow:hidden;background:var(--bg)}
+.bg-aurora::before,.bg-aurora::after{content:"";position:absolute;width:55vmax;height:55vmax;border-radius:50%;filter:blur(130px);opacity:.22;animation:drift 28s ease-in-out infinite alternate}
+.bg-aurora::before{background:radial-gradient(circle,#6366f1,transparent 62%);top:-22vmax;left:-12vmax}
+.bg-aurora::after{background:radial-gradient(circle,#d946ef,transparent 62%);bottom:-26vmax;right:-14vmax;animation-delay:-14s}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(7vmax,4vmax) scale(1.18)}}
+.wrap{max-width:62rem;margin:0 auto;padding:2rem 1rem 4rem}
+header.top{text-align:center;margin-bottom:2rem}
+h1.logo{margin:0;font-size:2.4rem;font-weight:800;letter-spacing:-.03em;background:linear-gradient(90deg,#fff,#a5b4fc,#e879f9,#67e8f9,#fff);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 9s linear infinite}
+@keyframes shine{to{background-position:300% 0}}
+header.top p{margin:.4rem 0 0;color:var(--muted);font-size:.9rem}
+/* carte + bord dégradé animé (style Aceternity moving-border) */
+.gborder{border-radius:1.1rem;padding:1px;background:conic-gradient(from var(--a),#6366f1,#d946ef,#22d3ee,#6366f1);animation:spin 5s linear infinite;box-shadow:0 0 40px rgba(99,102,241,.15)}
+@keyframes spin{to{--a:360deg}}
+.card{border:1px solid var(--border);border-radius:1rem;background:var(--card);backdrop-filter:blur(10px);padding:1.2rem 1.4rem}
+.gborder .card{border:0;background:rgba(10,10,10,.92);border-radius:1rem}
+#login{display:none;max-width:24rem;margin:5rem auto 0}
+#login h2{margin:.2rem 0 1rem;font-size:1.2rem}
+#l-err{color:#f87171;font-size:.85rem;min-height:1.2em;margin-top:.5rem}
+label.f{display:block;font-size:.78rem;color:var(--muted);margin:.6rem 0 .25rem}
+input[type=text],input:not([type]),select{width:100%;padding:.55rem .75rem;border-radius:.6rem;border:1px solid var(--border);background:rgba(0,0,0,.55);color:var(--txt);font-size:.9rem;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(99,102,241,.25)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 1rem}
+@media(max-width:40rem){.grid2{grid-template-columns:1fr}}
+.switch{display:inline-flex;align-items:center;gap:.55rem;cursor:pointer;font-size:.84rem;color:var(--muted);margin:.35rem 1.2rem .35rem 0;user-select:none}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.switch .track{flex:none;width:36px;height:20px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid var(--border);position:relative;transition:.2s}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.2s}
+.switch input:checked + .track{background:linear-gradient(90deg,var(--indigo),var(--fuchsia));border-color:transparent;box-shadow:0 0 10px rgba(217,70,239,.5)}
+.switch input:checked + .track::after{left:18px}
+.btn{border:0;cursor:pointer;border-radius:.65rem;padding:.65rem 1.3rem;font-weight:700;font-size:.92rem;color:#fff;background:linear-gradient(90deg,var(--indigo),var(--fuchsia));box-shadow:0 0 26px rgba(99,102,241,.45);transition:transform .15s,box-shadow .2s;margin-top:1rem}
+.btn:hover{transform:translateY(-1px);box-shadow:0 0 38px rgba(217,70,239,.55)}
+.btn:active{transform:translateY(0)}
+#progress-wrap{display:none;height:.85rem;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid var(--border);overflow:hidden;margin:1rem 0 .35rem}
+#bar{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,var(--indigo),var(--fuchsia),var(--cyan));box-shadow:0 0 14px rgba(99,102,241,.9);transition:width .3s}
+#bar-label{font-size:.8rem;color:var(--muted);margin-bottom:1rem;min-height:1.1em}
+pre#out{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.78rem;line-height:1.45;background:rgba(0,0,0,.65);border:1px solid var(--border);border-radius:.9rem;padding:1rem;overflow:auto;white-space:pre-wrap;max-height:26rem;margin:0}
+#previews{margin-top:1.4rem}
+.chapter{border:1px solid var(--border);border-radius:1rem;background:var(--card);backdrop-filter:blur(8px);padding:1.1rem 1.2rem;margin:1rem 0;transition:border-color .2s}
+.chapter:hover{border-color:rgba(255,255,255,.25)}
+.chapter h3{margin:.1rem 0 .6rem;font-size:1.02rem}
+.chapter .lang{color:var(--muted);font-size:.8rem;margin:.2rem 0}
+.cols{display:flex;gap:1.1rem;flex-wrap:wrap}
 .col{flex:1;min-width:16rem}
-.col img{max-width:100%;display:block;margin:.3rem 0;border:1px solid #eee}
-blockquote{margin:.3rem 0;padding:.2rem .6rem;border-left:3px solid #888;color:#333}
+.col h4{margin:.2rem 0 .5rem;font-size:.85rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.col img{max-width:100%;display:block;margin:.35rem 0;border-radius:.6rem;border:1px solid var(--border)}
+blockquote{margin:.3rem 0;padding:.25rem .7rem;border-left:3px solid var(--indigo);color:#d4d4d8;background:rgba(255,255,255,.03);border-radius:0 .4rem .4rem 0}
+.col p{margin:.3rem 0;color:#d4d4d8}
 </style>
 </head><body>
-<div id="login" style="display:none;max-width:22rem;margin:3rem auto;padding:1rem;border:1px solid #ccc;border-radius:8px">
+<div class="bg-aurora"></div><div class="bg-grid"></div>
+<div id="login"><div class="gborder"><div class="card">
 <h2>Connexion</h2>
-<input id="l-user" placeholder="identifiant">
-<input id="l-pass" type="password" placeholder="mot de passe">
-<button onclick="doLogin()">Se connecter</button>
-<div id="l-err" style="color:#b00;margin-top:.5rem"></div>
+<label class="f" for="l-user">identifiant</label>
+<input id="l-user" type="text" placeholder="identifiant" autocomplete="username">
+<label class="f" for="l-pass">mot de passe</label>
+<input id="l-pass" type="password" placeholder="mot de passe" autocomplete="current-password">
+<button class="btn" onclick="doLogin()">Se connecter</button>
+<div id="l-err"></div>
+</div></div></div>
+<div id="app" class="wrap">
+<header class="top"><h1 class="logo">Scalper</h1><p>Pipeline de scraping + traduction de chapitres manga/webtoon</p></header>
+<div class="card">
+<h3 style="margin:.1rem 0 .4rem">Lancer un pipeline <span style="color:var(--muted);font-weight:400;font-size:.8rem">scrape → clean → translate → QA → OCR/inpainting → export</span></h3>
+<div class="grid2">
+<div><label class="f" for="r-source">source (demo, mangadex)</label><input id="r-source" type="text" value="demo"></div>
+<div><label class="f" for="r-series">id série</label><input id="r-series" type="text" value="demo-1"></div>
+<div><label class="f" for="r-lang">langue cible (fr, en…)</label><input id="r-lang" type="text" value="fr"></div>
+<div><label class="f" for="r-srclang">langue d'entrée du chapitre (en, ja, fr…)</label><input id="r-srclang" type="text" value=""></div>
+<div><label class="f" for="r-group">groupe optionnel (mangadex uniquement)</label><input id="r-group" type="text"></div>
+<div><label class="f" for="r-max">max chapitres (optionnel)</label><input id="r-max" type="text"></div>
+<div><label class="f" for="r-ocrengine">moteur OCR</label><select id="r-ocrengine"><option value="">par défaut (env)</option><option value="paddle">paddle (PP-OCRv6)</option><option value="tesseract">tesseract</option></select></div>
+<div><label class="f" for="r-inpaint">moteur d'inpainting</label><select id="r-inpaint"><option value="">par défaut (env)</option><option value="lama">lama (big-lama)</option><option value="simple">simple</option><option value="auto">auto</option></select></div>
 </div>
-<div id="app">
-<h1>Scalper</h1>
-<p>Pipeline de scraping + traduction de chapitres.</p>
-<fieldset><legend>Lancer un pipeline (scrape → clean → translate → QA → export)</legend>
-<input id="r-source" placeholder="source (demo, mangadex)" value="demo">
-<input id="r-series" placeholder="id série" value="demo-1">
-<input id="r-lang" placeholder="langue cible (fr, en, ...)" value="fr">
-<input id="r-srclang" placeholder="langue d'entrée du chapitre (en, ja, fr…)" value="">
-<input id="r-group" placeholder="groupe optionnel (mangadex uniquement)">
-<input id="r-max" placeholder="max chapitres (optionnel)">
-<label><input type="checkbox" id="r-mock" style="width:auto"> mock-llm (démo hors ligne)</label>
-<label><input type="checkbox" id="r-force" style="width:auto"> forcer l'export même si la QA échoue</label>
-<label><input type="checkbox" id="r-ocr" checked style="width:auto"> OCR + remplacement du texte dans les images (auto)</label>
-<label><input type="checkbox" id="r-zip" checked style="width:auto"> zip export-<date>-<heure>-<minutes>.zip à la fin (images + PDF, le reste de out/ est supprimé)</label><br>
-<button onclick="runPipeline()">Lancer le pipeline</button>
-</fieldset>
+<div style="margin-top:.6rem">
+<label class="switch"><input type="checkbox" id="r-mock"><span class="track"></span>mock-llm (démo hors ligne)</label>
+<label class="switch"><input type="checkbox" id="r-force"><span class="track"></span>forcer l'export même si la QA échoue</label>
+<label class="switch"><input type="checkbox" id="r-ocr" checked><span class="track"></span>OCR + remplacement du texte dans les images</label>
+<label class="switch"><input type="checkbox" id="r-zip" checked><span class="track"></span>zip export-&lt;date&gt;-&lt;heure&gt;-&lt;minutes&gt;.zip à la fin (images + PDF, le reste de out/ est supprimé)</label>
+</div>
+<button class="btn" onclick="runPipeline()">Lancer le pipeline</button>
+</div>
 <div id="progress-wrap"><div id="bar"></div></div>
 <div id="bar-label"></div>
-<pre id="out">résultats ici…</pre>
+<div class="card" style="margin-top:1rem"><pre id="out">résultats ici…</pre></div>
 <div id="previews"></div>
+</div>
 <script>
 const enc = encodeURIComponent;
 let TOKEN = localStorage.getItem('scalper_token') || '';
@@ -183,8 +234,9 @@ async function doLogin(){ const r=await fetch('/login',{method:'POST',headers:{'
 if(TOKEN) hideLogin(); else showLogin();
 async function runPipeline(){
   const g=document.getElementById('r-group').value, m=document.getElementById('r-max').value, sl=document.getElementById('r-srclang').value;
+  const oe=document.getElementById('r-ocrengine').value, ie=document.getElementById('r-inpaint').value;
   const body={source:document.getElementById('r-source').value, series:document.getElementById('r-series').value, lang:document.getElementById('r-lang').value, mock_llm:document.getElementById('r-mock').checked, force:document.getElementById('r-force').checked, with_ocr:document.getElementById('r-ocr').checked, zip_export:document.getElementById('r-zip').checked, background:true};
-  if(g) body.group=g; if(m) body.max_chapters=Number(m); if(sl) body.src_lang=sl;
+  if(g) body.group=g; if(m) body.max_chapters=Number(m); if(sl) body.src_lang=sl; if(oe) body.ocr_engine=oe; if(ie) body.inpaint_engine=ie;
   document.getElementById('out').textContent='en cours…';
   document.getElementById('previews').innerHTML='';
   const r=await api('/run',{method:'POST',body:JSON.stringify(body)});
@@ -195,7 +247,7 @@ async function runPipeline(){
 function poll(jobId,out){
   const wrap=document.getElementById('progress-wrap'), bar=document.getElementById('bar'), label=document.getElementById('bar-label');
   wrap.style.display='block'; bar.style.width='0%';
-  const t=setInterval(async()=>{
+  const t=setInterval(async ()=>{
     const r=await api('/jobs/'+jobId); const j=await r.json();
     const p=j.progress||{done:0,total:0,current:''};
     const pct=p.total?Math.round(100*p.done/Math.max(1,p.total)):0;
@@ -230,7 +282,7 @@ function blockEl(b,dir,out,imgSub){
 function chapterPanel(data,out,lang){
   const panel=document.createElement('div'); panel.className='chapter';
   const h=document.createElement('h3'); h.textContent='Chapitre '+((data.meta&&data.meta.number)||'')+' — '+(data.dir||''); panel.appendChild(h);
-  if(data.meta&&data.meta.language){ const lp=document.createElement('p'); lp.style.cssText='margin:.2rem 0;color:#555'; lp.textContent="Langue d'entrée : "+data.meta.language; panel.appendChild(lp); }
+  if(data.meta&&data.meta.language){ const lp=document.createElement('p'); lp.className='lang'; lp.textContent="Langue d'entrée : "+data.meta.language; panel.appendChild(lp); }
   const cols=document.createElement('div'); cols.className='cols';
   const c1=document.createElement('div'); c1.className='col';
   const h1=document.createElement('h4'); h1.textContent='Récupéré (source)'; c1.appendChild(h1);
@@ -245,25 +297,45 @@ function chapterPanel(data,out,lang){
   return panel;
 }
 </script>
-</div>
 </body></html>
 """
 
 
 
-SETUP_HTML = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Scalper — premier démarrage</title>
-<style>body{font-family:system-ui,sans-serif;max-width:24rem;margin:3rem auto;padding:0 1rem;color:#222}input{padding:.45rem;margin:.2rem 0;width:100%;box-sizing:border-box}button{padding:.5rem 1rem;background:#222;color:#fff;border:0;border-radius:6px;cursor:pointer}#err{color:#b00;margin-top:.6rem}</style>
-</head><body><h1>Scalper — création du compte</h1>
+SETUP_HTML = """<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Scalper — premier démarrage</title>
+<style>
+@property --a{syntax:'<angle>';initial-value:0deg;inherits:false}
+:root{--bg:#030303;--border:rgba(255,255,255,.1);--txt:#e4e4e7;--muted:#a1a1aa;--indigo:#6366f1;--fuchsia:#d946ef}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--txt);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center}
+.bg-grid{position:fixed;inset:0;z-index:-2;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:44px 44px;-webkit-mask-image:radial-gradient(ellipse 90% 65% at 50% 0%,#000 55%,transparent 100%);mask-image:radial-gradient(ellipse 90% 65% at 50% 0%,#000 55%,transparent 100%)}
+.bg-aurora{position:fixed;inset:0;z-index:-3;overflow:hidden;background:var(--bg)}
+.bg-aurora::before{content:"";position:absolute;width:55vmax;height:55vmax;border-radius:50%;filter:blur(130px);opacity:.22;background:radial-gradient(circle,#6366f1,transparent 62%);top:-22vmax;left:-12vmax}
+.gborder{max-width:24rem;width:calc(100% - 2rem);border-radius:1.1rem;padding:1px;background:conic-gradient(from var(--a),#6366f1,#d946ef,#22d3ee,#6366f1);animation:spin 5s linear infinite;box-shadow:0 0 40px rgba(99,102,241,.15)}
+@keyframes spin{to{--a:360deg}}
+.card{border-radius:1rem;background:rgba(10,10,10,.92);padding:1.4rem}
+h1{margin:.1rem 0 .3rem;font-size:1.3rem;font-weight:800;background:linear-gradient(90deg,#fff,#a5b4fc,#e879f9);-webkit-background-clip:text;background-clip:text;color:transparent}
+p{color:var(--muted);font-size:.85rem;margin:.2rem 0 1rem}
+input{width:100%;padding:.55rem .75rem;margin:.35rem 0;border-radius:.6rem;border:1px solid var(--border);background:rgba(0,0,0,.55);color:var(--txt);font-size:.9rem;outline:none}
+input:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(99,102,241,.25)}
+button{width:100%;margin-top:.8rem;border:0;cursor:pointer;border-radius:.65rem;padding:.65rem;font-weight:700;color:#fff;background:linear-gradient(90deg,var(--indigo),var(--fuchsia));box-shadow:0 0 26px rgba(99,102,241,.45)}
+#err{color:#f87171;font-size:.85rem;min-height:1.2em;margin-top:.5rem}
+</style>
+</head><body>
+<div class="bg-aurora"></div><div class="bg-grid"></div>
+<div class="gborder"><div class="card">
+<h1>Scalper — création du compte</h1>
 <p>Lien de premier démarrage valide.</p>
-<input id="u" placeholder="identifiant">
-<input id="p" type="password" placeholder="mot de passe (8 caractères min.)">
+<input id="u" type="text" placeholder="identifiant" autocomplete="username">
+<input id="p" type="password" placeholder="mot de passe (8 caractères min.)" autocomplete="new-password">
 <button onclick="go()">Créer le compte</button>
 <div id="err"></div>
+</div></div>
 <script>
 async function go(){
   const r=await fetch('/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:new URLSearchParams(location.search).get('token'),username:document.getElementById('u').value,password:document.getElementById('p').value})});
   const j=await r.json();
-  if(r.ok){ document.body.innerHTML='<h1>Compte créé</h1><p>Connectez-vous : <a href="/">/</a></p>'; }
+  if(r.ok){ document.body.innerHTML='<div class="gborder"><div class="card"><h1>Compte créé</h1><p>Connectez-vous : <a style="color:#a5b4fc" href="/">/</a></p></div></div>'; }
   else document.getElementById('err').textContent=j.error||('erreur '+r.status);
 }
 </script></body></html>

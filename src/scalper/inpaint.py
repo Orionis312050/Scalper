@@ -166,10 +166,11 @@ class LamaInpainter:
     """
 
     def __init__(self, model_path: str | Path | None = None, input_size: int = LAMA_INPUT_SIZE,
-                 min_context: int = LAMA_MIN_CONTEXT) -> None:
+                 min_context: int = LAMA_MIN_CONTEXT, mask_dilate: int = 2) -> None:
         self._model_path = Path(model_path) if model_path else None
         self._input_size = input_size
         self._min_context = min_context
+        self._mask_dilate = mask_dilate  # dilatation du masque (px) : suppression complète du texte
         self._session = None
 
     def _resolve_model_path(self) -> Path:
@@ -233,7 +234,7 @@ class LamaInpainter:
 
     def inpaint_image(self, img, regions: list[dict[str, Any]]):
         import numpy as np
-        from PIL import Image, ImageDraw
+        from PIL import Image, ImageDraw, ImageFilter
 
         sess = self._get_session()
         size = self._input_size
@@ -248,13 +249,18 @@ class LamaInpainter:
             sx, sy = size / cw, size / ch
             mask512 = Image.new("L", (size, size), 0)
             self._draw_region_mask(ImageDraw.Draw(mask512), r, box, cx0, cy0, sx, sy)
+            mask_crop = Image.new("L", (cw, ch), 0)
+            self._draw_region_mask(ImageDraw.Draw(mask_crop), r, box, cx0, cy0, 1.0, 1.0)
+            if self._mask_dilate > 0:
+                # dilatation du masque (style « pinceau magique ») : on efface le texte
+                # ENTIÈREMENT, y compris les bords anti-crénelés des glyphes
+                mask512 = mask512.filter(ImageFilter.MaxFilter(2 * self._mask_dilate + 1))
+                mask_crop = mask_crop.filter(ImageFilter.MaxFilter(3))
             x_in = (np.asarray(crop, dtype=np.float32) / 255.0).transpose(2, 0, 1)[None]
             m_in = ((np.asarray(mask512, dtype=np.float32) / 255.0) > 0).astype(np.float32)[None, None]
             out = sess.run(["output"], {"image": x_in, "mask": m_in})[0][0]  # [3, S, S], RGB 0..255
             pred = np.clip(out.transpose(1, 2, 0), 0, 255).astype(np.uint8)
             pred_crop = Image.fromarray(pred).resize((cw, ch), Image.LANCZOS)
-            mask_crop = Image.new("L", (cw, ch), 0)
-            self._draw_region_mask(ImageDraw.Draw(mask_crop), r, box, cx0, cy0, 1.0, 1.0)
             m = np.asarray(mask_crop) > 0
             sub = arr[cy0:cy1, cx0:cx1]
             sub[m] = np.asarray(pred_crop)[m]

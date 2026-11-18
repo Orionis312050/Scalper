@@ -271,6 +271,27 @@ class TestLamaInpainter(unittest.TestCase):
             self.assertEqual(tuple(out_arr[250, 350]), (240, 240, 245))
             self.assertEqual(tuple(out_arr[10, 10]), (240, 240, 245))
 
+    def test_mask_is_dilated_for_full_text_removal(self):
+        """Le masque doit être dilaté (style pinceau magique) : le texte est effacé
+        entièrement, y compris ses bords anti-crénelés."""
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp) / "lama_fp32.onnx"
+            model.write_bytes(b"fake")
+            img = Image.new("RGB", (512, 512), (240, 240, 245))
+            fake_mod, fake_session_cls = _fake_onnxruntime_module(fill_value=200.0)
+            region = [{"index": 0, "box": [100, 100, 50, 30], "text": "x"}]
+            with mock.patch.dict(sys.modules, {"onnxruntime": fake_mod}):
+                LamaInpainter(model_path=model).inpaint_image(img, region)  # mask_dilate=2 par défaut
+                mask = fake_session_cls.instances[-1].calls[0]["mask"][0, 0]
+                # crop 256x256 en (0,0), échelle x2 -> rect 512 : [194,194]..[306,266]
+                self.assertEqual(mask[230, 250], 1.0)  # centre de la boîte
+                self.assertEqual(mask[192, 192], 1.0)  # dilaté de 2 px (hors rectangle strict)
+                self.assertEqual(mask[190, 190], 0.0)  # au-delà de la dilatation
+                LamaInpainter(model_path=model, mask_dilate=0).inpaint_image(img, region)
+                mask0 = fake_session_cls.instances[-1].calls[0]["mask"][0, 0]
+                self.assertEqual(mask0[230, 250], 1.0)
+                self.assertEqual(mask0[192, 192], 0.0, "sans dilatation, le bord reste à 0")
+
     def test_inpaint_image_uses_poly_when_present(self):
         with tempfile.TemporaryDirectory() as tmp:
             model = Path(tmp) / "lama_fp32.onnx"

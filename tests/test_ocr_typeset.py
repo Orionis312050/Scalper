@@ -228,6 +228,57 @@ class TestOCRTypeset(unittest.TestCase):
             self.assertEqual(len(outputs), 1)
             self.assertTrue((d / "export" / "images-fr" / "p1.png").exists())
 
+    def test_typeset_chapter_ecrit_images_clean_puis_traduites(self):
+        """Flux en deux étapes : 3/4 inpainting -> export/images-clean, 4/4 retypographie
+        -> export/images-<lang>."""
+        from scalper.inpaint import SimpleInpainter
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "images").mkdir()
+            self._make_image(d / "images" / "p1.png")
+            (d / "ocr.json").write_text(
+                json.dumps({"lang": "eng", "regions": [{"index": 0, "image": "p1.png", "box": [10, 10, 280, 60], "text": "Hello world"}]}),
+                encoding="utf-8",
+            )
+            outputs = typeset_chapter(d, "fr", translations=["Bonjour le monde"], inpainter=SimpleInpainter())
+            self.assertEqual(len(outputs), 1)
+            clean = d / "export" / "images-clean" / "p1.png"
+            trad = d / "export" / "images-fr" / "p1.png"
+            self.assertTrue(clean.exists(), "étape 3 : image nettoyée (inpainting)")
+            self.assertTrue(trad.exists(), "étape 4 : image re-traduite")
+            c = Image.open(clean).convert("RGB")
+            dark = any(c.getpixel((px, py))[0] < 100 for px in range(10, 290) for py in range(10, 70))
+            self.assertFalse(dark, "le texte original doit être entièrement effacé dans images-clean")
+            t = Image.open(trad).convert("RGB")
+            dark_t = any(t.getpixel((px, py))[0] < 100 for px in range(10, 290) for py in range(10, 70))
+            self.assertTrue(dark_t, "la traduction doit être redessinée dans images-<lang>")
+
+    def test_replace_texts_draw_only_ne_inpaint_pas(self):
+        """inpainter=_DRAW_ONLY : retypographie seule, l'image d'entrée n'est pas inpaintée
+        (utilisé sur les images déjà nettoyées d'export/images-clean)."""
+        from scalper.typeset import _DRAW_ONLY
+
+        class RedInpainter:
+            def inpaint_image(self, img, regions):
+                d = ImageDraw.Draw(img)
+                for r in regions:
+                    x, y, w, h = r["box"]
+                    d.rectangle([x, y, x + w, y + h], fill=(255, 0, 0))
+                return img
+
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "p.png"
+            out1, out2 = Path(tmp) / "o1.png", Path(tmp) / "o2.png"
+            self._make_image(src)
+            regions = [{"index": 0, "box": [10, 10, 280, 60], "text": "Hello world"}]
+            replace_texts(src, regions, ["x"], out1, inpainter=RedInpainter())
+            replace_texts(src, regions, ["x"], out2, inpainter=_DRAW_ONLY)
+            r1 = Image.open(out1).convert("RGB")
+            r2 = Image.open(out2).convert("RGB")
+            self.assertEqual(r1.getpixel((12, 12)), (255, 0, 0), "inpainter explicite : boîte remplie")
+            self.assertEqual(r2.getpixel((12, 12)), (200, 220, 255), "_DRAW_ONLY : boîte non inpaintée")
+
     def test_typeset_chapter_explicit_translations(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
@@ -297,7 +348,8 @@ class TestOCRTypeset(unittest.TestCase):
             with mock.patch("scalper.ocr.ocr_chapter", side_effect=fake_ocr):
                 out = pipeline._run_ocr_typeset(d, {"language": "en"}, "fr", FakeLLM(), {})
             self.assertTrue(out.startswith("ok"), out)
-            self.assertTrue((d / "export" / "images-fr" / "p1.png").exists())
+            self.assertTrue((d / "export" / "images-clean" / "p1.png").exists(), "étape 3 : inpainting -> images-clean")
+            self.assertTrue((d / "export" / "images-fr" / "p1.png").exists(), "étape 4 : retypographie -> images-fr")
 
 
 if __name__ == "__main__":

@@ -40,12 +40,20 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 ## OCR & remplacement du texte dans les images (automatique)
 
 Dans `scalper run` (et `POST /run`), l'OCR + typesetting s'exécute **automatiquement** dès qu'un
-chapitre contient des images (désactivable avec `--no-ocr` / `"with_ocr": false`) :
-l'OCR extrait les régions texte des images (`ocr.json`, avec le quadrilatère `poly` quand le moteur
-le fournit — PaddleOCR), chaque texte détecté est traduit par le LLM, puis `typeset` efface le texte
-original (**inpainting**, voir moteurs ci-dessous) et redessine la traduction au même endroit,
-centrée, à la taille du texte d'origine (hauteur de la boîte OCR), avec une couleur contrastée
-avec le fond (Pillow). Résultat : `export/images-<lang>/`.
+chapitre contient des images (désactivable avec `--no-ocr` / `"with_ocr": false`), en **4 étapes**
+(loguées `1/4`…`4/4`) :
+
+1. **OCR** : extraction du texte brut des bulles (`ocr.json`, avec le quadrilatère `poly` quand le
+   moteur le fournit — PaddleOCR) ;
+2. **traduction** de chaque texte détecté par le LLM ;
+3. **inpainting** du texte original sur les images **brutes** (voir moteurs ci-dessous — LaMa efface
+   le texte entièrement, masque = polygone OCR dilaté, style « pinceau magique » ; seuls les pixels
+   masqués sont remplacés, le reste de la page est inchangé) → `export/images-clean/` ;
+4. **retypographie** : la traduction est redessinée au même endroit, centrée dans la boîte
+   d'origine, **à la taille du texte d'origine** (plus grande police tenant dans la boîte OCR,
+   hauteur = hauteur de boîte), avec une couleur contrastée avec le fond (Pillow)
+   → `export/images-<lang>/` (les images nettoyées avant retypographie sont aussi gardées dans
+   `export/images-clean/`).
 
 La langue source de l'OCR est déduite de la langue détectée du chapitre (`en→eng`, `fr→fra`,
 `ja→jpn`…). L'image Docker n'embarque que `eng` (`tesseract-ocr` inclut `tesseract-ocr-eng`) :
@@ -152,10 +160,14 @@ cp .env.example .env       # MISTRAL_API_KEY (jamais committer)
 docker compose up -d       # API sur http://localhost:8000 + interface web sur http://localhost:8000/
 ```
 
-L'interface web (`GET /`) affiche une **barre de progression** pendant le run (via `POST /run`
-avec `"background": true` + polling de `GET /jobs/<id>`), puis une **preview par chapitre** :
-blocs du chapitre récupéré (source) et du chapitre traduit complet, avec les images servies
-via `GET /file` (et les images re-traduites `export/images-<lang>/` quand l'OCR/typeset a tourné).
+L'interface web (`GET /`) — refondue dans un style **Aceternity UI** (thème sombre, aurora/grid
+animée, cartes à bord dégradé, toggles, barre de progression dégradée ; 100 % vanilla CSS/JS,
+sans build ni CDN, servie en un seul fichier par le serveur stdlib) — affiche une **barre de
+progression** pendant le run (via `POST /run` avec `"background": true` + polling de
+`GET /jobs/<id>`), permet de choisir les moteurs (`ocr_engine`, `inpaint_engine`) et coche par
+défaut le **zip export** ; puis une **preview par chapitre** : blocs du chapitre récupéré
+(source) et du chapitre traduit complet, avec les images servies via `GET /file` (et les images
+re-traduites `export/images-<lang>/` quand l'OCR/typeset a tourné).
 
 Déploiement pas à pas sur Coolify : [docs/deploy-coolify.md](docs/deploy-coolify.md).
 

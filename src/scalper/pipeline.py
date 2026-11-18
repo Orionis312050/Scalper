@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -124,18 +125,25 @@ def _run_ocr_typeset(dest: Path, meta: dict[str, Any], lang: str, client: LLMCli
         return msg
     try:
         src_lang = _TESSERACT_LANGS.get(str(meta.get("language") or "en")[:2].lower(), "eng")
+        ocr_engine_name = ocr_engine or os.environ.get("SCALPER_OCR_ENGINE", "tesseract")
+        inpainter = default_inpainter(inpaint_engine)
+        inpaint_name = type(inpainter).__name__
+        print(f"[scalper][ocr] {dest.name}: 1/4 OCR ({ocr_engine_name}) du texte brut des bulles...", file=sys.stderr)
         regions = ocr_chapter(dest, default_ocr_client(src_lang, engine=ocr_engine), lang=src_lang)
         if not regions:
             msg = "skipped : aucun texte détecté dans les images"
             print(f"[scalper][ocr] {dest.name}: {msg}", file=sys.stderr)
             return msg
+        print(f"[scalper][ocr] {dest.name}: 2/4 traduction de {len(regions)} textes -> {lang}...", file=sys.stderr)
         ocr_chapter_src = Chapter(
             meta={"language": src_lang},
             blocks=[Block(index=i, type="narration", text=r.get("text", "")) for i, r in enumerate(regions)],
         )
         translated = translate_chapter(ocr_chapter_src, lang, glossary, client)
+        print(f"[scalper][ocr] {dest.name}: 3/4 inpainting ({inpaint_name}) du texte original sur les images brutes -> export/images-clean/", file=sys.stderr)
+        print(f"[scalper][ocr] {dest.name}: 4/4 retypographie des traductions (taille ajustée par bulle) -> export/images-{lang}/", file=sys.stderr)
         outs = typeset_chapter(dest, lang, translations=[b.text for b in translated.blocks],
-                               inpainter=default_inpainter(inpaint_engine))
+                               inpainter=inpainter)
         return f"ok ({len(outs)} images reconstituées, {len(regions)} textes remplacés)"
     except Exception as e:
         print(f"[scalper][ocr] {dest.name} ERREUR: {e}", file=sys.stderr)

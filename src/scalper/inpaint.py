@@ -147,14 +147,26 @@ def _download_model(url: str, dest: Path) -> None:
     print(f"[scalper][lama] téléchargement du modèle big-lama ONNX ({LAMA_MODEL_SIZE // (1 << 20)} Mo) : {url} -> {dest}", file=sys.stderr)
     with urllib.request.urlopen(url) as r, open(part, "wb") as f:
         shutil.copyfileobj(r, f, length=1 << 20)
-    h = hashlib.sha256()
-    with open(part, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    if part.stat().st_size != LAMA_MODEL_SIZE or h.hexdigest() != LAMA_MODEL_SHA256:
+    if part.stat().st_size != LAMA_MODEL_SIZE or _file_sha256(part) != LAMA_MODEL_SHA256:
         part.unlink(missing_ok=True)
         raise RuntimeError("modèle LaMa téléchargé invalide (taille ou sha256 incorrect) — réessayez")
     os.replace(part, dest)
+
+
+def _file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _valid_model(path: Path) -> bool:
+    """Vrai si le fichier est un modèle LaMa intact (taille + sha256 attendus)."""
+    try:
+        return path.stat().st_size == LAMA_MODEL_SIZE and _file_sha256(path) == LAMA_MODEL_SHA256
+    except OSError:
+        return False
 
 
 class LamaInpainter:
@@ -182,7 +194,13 @@ class LamaInpainter:
         cache = _default_cache_dir()
         cache.mkdir(parents=True, exist_ok=True)
         dest = cache / LAMA_MODEL_NAME
+        # Re-vérifie le cache à chaque chargement : un fichier laissé par une vieille
+        # version (téléchargement interrompu/incorrect) est re-téléchargé.
         if not dest.exists():
+            _download_model(LAMA_MODEL_URL, dest)
+        elif not _valid_model(dest):
+            print(f"[scalper][lama] modèle en cache invalide (taille/sha256) : {dest} -> re-téléchargement", file=sys.stderr)
+            dest.unlink(missing_ok=True)
             _download_model(LAMA_MODEL_URL, dest)
         return dest
 
@@ -248,7 +266,10 @@ class LamaInpainter:
         arr = np.array(img.convert("RGB"))
         t0 = time.time()
         n_done = 0
+        n_fallback = 0
         cov_sum = 0.0
+        cov_in_sum = 0.0
+        delta_sum = 0.0
         for r in regions:
             box = _box_of(r)
             if box is None:
@@ -276,15 +297,30 @@ class LamaInpainter:
                 # ne devrait plus arriver (masque = union rect + poly) : log explicite
                 print(f"[scalper][lama] ATTENTION masque vide pour la région box={list(box)} (image {img.width}x{img.height})", file=sys.stderr)
                 continue
+            mm = m_in[0, 0] > 0  # masque réellement envoyé au modèle (512x512)
             cov_sum += float(m.mean())
+            cov_in_sum += float(mm.mean()) if mm.any() else 0.0
+            # delta |pred - entrée| dans le masque modèle : ~0 => le modèle n'a rien fait (no-op)
+            delta_r = float(np.abs(pred.astype(np.float32) - x_in[0].transpose(1, 2, 0) * 255.0)[mm].mean()) if mm.any() else 0.0
+            delta_sum += delta_r
             n_done += 1
             sub = arr[cy0:cy1, cx0:cx1]
-            sub[m] = np.asarray(pred_crop)[m]
+            if delta_r < 1.0 and mm.any():
+                # Repli : LaMa n'a produit aucun changement (modèle no-op / mauvais fichier) ->
+                # on remplit quand même la zone par la couleur de l'anneau pour effacer le texte.
+                n_fallback += 1
+                x, y, w, h = box
+                pad = max(1, min(w, h) // 10)
+                fill = _ring_fill_color(img, max(0, x - pad), max(0, y - pad),
+                                        min(img.width, x + w + pad), min(img.height, y + h + pad))
+                sub[m] = np.array(fill, dtype=np.uint8)
+            else:
+                sub[m] = np.asarray(pred_crop)[m]
         if n_done:
-            cov = cov_sum / n_done
             print(
                 f"[scalper][lama] image {img.width}x{img.height} : {n_done}/{len(regions)} régions inpaintées, "
-                f"couverture masque moyenne {cov:.1%} du crop, {time.time() - t0:.1f}s",
+                f"couverture masque {cov_sum / n_done:.1%} du crop (entrée modèle {cov_in_sum / n_done:.1%}), "
+                f"delta |pred-input| moyen {delta_sum / n_done:.1f}, repli fill {n_fallback}, {time.time() - t0:.1f}s",
                 file=sys.stderr,
             )
         return Image.fromarray(arr)

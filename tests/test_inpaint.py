@@ -81,20 +81,40 @@ class TestModelResolution(unittest.TestCase):
             cache.mkdir()
             (cache / "lama_fp32.onnx").write_bytes(b"fake")
             with mock.patch.dict(os.environ, {"SCALPER_LAMA_CACHE": str(cache)}):
-                with mock.patch("scalper.inpaint._download_model", side_effect=AssertionError("ne doit pas télécharger")):
-                    self.assertEqual(LamaInpainter()._resolve_model_path(), cache / "lama_fp32.onnx")
+                with mock.patch("scalper.inpaint._valid_model", return_value=True):
+                    with mock.patch("scalper.inpaint._download_model", side_effect=AssertionError("ne doit pas télécharger")):
+                        self.assertEqual(LamaInpainter()._resolve_model_path(), cache / "lama_fp32.onnx")
+
+    def test_cache_invalid_model_redownloads(self):
+        """Un fichier en cache qui ne passe pas la vérif taille+sha256 est re-téléchargé."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "cache"
+            cache.mkdir()
+            bad = cache / "lama_fp32.onnx"
+            bad.write_bytes(b"fichier corrompu")
+            with mock.patch.dict(os.environ, {"SCALPER_LAMA_CACHE": str(cache)}):
+                with mock.patch("scalper.inpaint._valid_model", return_value=False):
+                    with mock.patch("scalper.inpaint._download_model") as dl:
+                        def fake_download(url, dest):
+                            dest.write_bytes(b"nouveau")
+                        dl.side_effect = fake_download
+                        p = LamaInpainter()._resolve_model_path()
+            self.assertEqual(p, bad)
+            self.assertEqual(bad.read_bytes(), b"nouveau")
+            self.assertEqual(dl.call_count, 1)
 
     def test_cache_miss_downloads_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(tmp) / "cache"
             with mock.patch.dict(os.environ, {"SCALPER_LAMA_CACHE": str(cache)}):
-                with mock.patch("scalper.inpaint._download_model") as dl:
-                    def fake_download(url, dest):
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        dest.write_bytes(b"fake")
-                    dl.side_effect = fake_download
-                    p1 = LamaInpainter()._resolve_model_path()
-                    p2 = LamaInpainter()._resolve_model_path()
+                with mock.patch("scalper.inpaint._valid_model", return_value=True):
+                    with mock.patch("scalper.inpaint._download_model") as dl:
+                        def fake_download(url, dest):
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            dest.write_bytes(b"fake")
+                        dl.side_effect = fake_download
+                        p1 = LamaInpainter()._resolve_model_path()
+                        p2 = LamaInpainter()._resolve_model_path()
             self.assertEqual(p1, cache / "lama_fp32.onnx")
             self.assertEqual(dl.call_count, 1, "un second appel doit réutiliser le cache")
             self.assertEqual(p2, p1)
@@ -212,9 +232,10 @@ class TestCropAndMask(unittest.TestCase):
         self.assertEqual(mask.getpixel((125, 115)), 255)
 
 
-def _fake_onnxruntime_module(fill_value=200.0):
+def _fake_onnxruntime_module(fill_value=200.0, identity=False):
     """Module onnxruntime factice : session qui renvoie `fill_value` dans le masque et
-    recopopie l'entrée (x255) hors masque, comme le vrai modèle."""
+    recopopie l'entrée (x255) hors masque, comme le vrai modèle.
+    `identity=True` : simule un modèle no-op (sortie = entrée, delta nul)."""
     mod = types.ModuleType("onnxruntime")
 
     class FakeSession:
@@ -230,7 +251,10 @@ def _fake_onnxruntime_module(fill_value=200.0):
             assert output_names == ["output"]
             self.calls.append(feeds)
             image, mask = feeds["image"], feeds["mask"]
-            out = image * 255.0 * (1.0 - mask) + fill_value * mask
+            if identity:
+                out = image * 255.0
+            else:
+                out = image * 255.0 * (1.0 - mask) + fill_value * mask
             return [out]
 
     class SessionOptions:
@@ -325,6 +349,28 @@ class TestLamaInpainter(unittest.TestCase):
             # le masque doit suivre le polygone : point intérieur masqué, extérieur non
             self.assertEqual(mask[128, 200], 1.0)   # (x=200, y=128) dans le poly [60..240]x[50..100]
             self.assertEqual(mask[LAMA_INPUT_SIZE // 2, LAMA_INPUT_SIZE // 2], 0.0)  # (256,256) hors poly
+
+    def test_inpaint_image_noop_model_falls_back_to_fill(self):
+        """Si le modèle renvoie l'entrée telle quelle (delta ~ 0, ex. mauvais fichier ONNX
+        en cache), on remplit quand même la zone masquée (couleur de l'anneau) pour effacer
+        le texte, au lieu de laisser le texte original."""
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp) / "lama_fp32.onnx"
+            model.write_bytes(b"fake")
+            src = Path(tmp) / "p.png"
+            self._make_page(src)  # fond (240,240,245), bulle blanche [50,40,250,110], texte noir
+            fake_mod, _ = _fake_onnxruntime_module(identity=True)
+            with mock.patch.dict(sys.modules, {"onnxruntime": fake_mod}):
+                inp = LamaInpainter(model_path=model)
+                img = Image.open(src).convert("RGB")
+                regions = [{"index": 0, "box": [60, 50, 180, 50], "text": "Texte original"}]
+                out = inp.inpaint_image(img, regions)
+            arr = np.asarray(out)
+            # centre de la boîte : rempli (plus de texte noir), couleur proche du fond/anneau
+            center = arr[75, 150]
+            self.assertGreater(int(center.mean()), 150, f"le texte doit être effacé (repli fill), got {center}")
+            # hors masque : inchangé
+            self.assertEqual(tuple(arr[10, 10]), (240, 240, 245))
 
 
 @unittest.skipUnless(HAS_PIL, "Pillow requis")

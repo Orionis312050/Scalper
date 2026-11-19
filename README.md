@@ -101,8 +101,13 @@ Puis **tout le reste du dossier `out/` est supprimé** (zip excepté — y compr
 Le chemin du zip est renvoyé dans le résumé du run (`export_zip`).
 
 Pendant l'inpainting LaMa, chaque page loggue un diagnostic :
-`[scalper][lama] image 690x10000 : 28/28 régions inpaintées, couverture masque moyenne 20.9% du crop, 70.7s`
-(« masque vide » / couverture 0 % = coordonnées OCR hors image, voir `_normalize_polys`).
+`[scalper][lama] image 690x10000 : 28/28 régions inpaintées, couverture masque 20.9% du crop (entrée modèle 21.5%), delta |pred-input| moyen 25.5, repli fill 0, 68.2s`
+- « masque vide » / couverture 0 % = coordonnées OCR hors image (voir `_normalize_polys`) ;
+- `delta ~0` = le modèle ne produit aucun changement (fichier ONNX en cache invalide) : le cache
+  est re-vérifié (taille + sha256) à chaque chargement et re-téléchargé si besoin, et à défaut
+  chaque région est remplie par la couleur de l'anneau (**repli fill**) pour effacer le texte.
+ Empreinte attendue du modèle : sha256 `1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6`,
+ 208 044 816 octets (`sha256sum /app/data/.lama/lama_fp32.onnx` dans le conteneur).
 
 **Moteurs d'inpainting** (protocol `Inpainter` dans `src/scalper/inpaint.py`, sélection par
 `SCALPER_INPAINT_ENGINE` ou `--inpaint-engine`, et `"inpaint_engine"` dans `POST /run`) :

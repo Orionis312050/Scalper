@@ -106,6 +106,49 @@ def _clamp_regions(regions: list[dict[str, Any]], width: int, height: int) -> li
     return out
 
 
+def merge_regions_for_erase(regions: list[dict[str, Any]], gap: int = 50, cap: int = 1600) -> list[dict[str, Any]]:
+    """Fusionne les boîtes OCR proches en régions d'effacement (niveau bulle).
+
+    LaMa efface nettement mieux un **grand masque continu** (bulle entière) qu'une fine
+    ligne de texte individuelle : on regroupe les boîtes dont les rectangles élargis de
+    `gap` px se touchent (union transitaire, bornée à `cap` px par dimension pour ne pas
+    fusionner toute une colonne). Renvoie des régions dont la `box` est l'union, en
+    conservant les autres champs (index, poly…) de la première boîte du groupe.
+    Sert UNIQUEMENT à l'étape d'effacement ; la retypographie garde les boîtes ligne par ligne."""
+    items = []
+    for r in regions:
+        box = r.get("box")
+        if not box or len(box) != 4:
+            continue
+        try:
+            x, y, w, h = (int(v) for v in box)
+        except (TypeError, ValueError):
+            continue
+        if w < 1 or h < 1:
+            continue
+        items.append((r, x, y, x + w, y + h))
+    used = [False] * len(items)
+    out: list[dict[str, Any]] = []
+    for i, (r, x0, y0, x1, y1) in enumerate(items):
+        if used[i]:
+            continue
+        used[i] = True
+        changed = True
+        while changed:
+            changed = False
+            for j, (rj, a0, b0, a1, b1) in enumerate(items):
+                if used[j]:
+                    continue
+                if a0 - gap <= x1 and a1 + gap >= x0 and b0 - gap <= y1 and b1 + gap >= y0:
+                    nx0, ny0, nx1, ny1 = min(x0, a0), min(y0, b0), max(x1, a1), max(y1, b1)
+                    if nx1 - nx0 <= cap and ny1 - ny0 <= cap:
+                        x0, y0, x1, y1 = nx0, ny0, nx1, ny1
+                        used[j] = True
+                        changed = True
+        out.append({**r, "box": [x0, y0, x1 - x0, y1 - y0]})
+    return out
+
+
 def _todo_regions(regions: list[dict[str, Any]], translations: list[str]) -> list[tuple[dict[str, Any], str]]:
     """Régions à retyper : index valide, traduction non vide et différente du texte
     original, boîte assez grande (sinon c'est du bruit OCR)."""
@@ -167,7 +210,8 @@ def replace_texts(
     regions = _clamp_regions(regions, img.width, img.height)
     todo = _todo_regions(regions, translations)
     if todo and inpainter is not _DRAW_ONLY:
-        img = inpainter.inpaint_image(img, [r for r, _ in todo]).convert("RGB")
+        # effacement au niveau bulle (boîtes fusionnées) : bien plus fiable qu'une ligne seule
+        img = inpainter.inpaint_image(img, merge_regions_for_erase([r for r, _ in todo])).convert("RGB")
     draw = ImageDraw.Draw(img)
     for r, text in todo:
         x, y, w, h = r["box"]
@@ -225,10 +269,12 @@ def typeset_chapter(
     for name, regions in sorted(by_image.items()):
         src = images_dir / name
         if src.exists():
-            # étape 3 : effacement du texte original sur l'image brute
+            # étape 3 : effacement du texte original sur l'image brute — les boîtes OCR
+            # (lignes) sont fusionnées en régions-bulles, bien mieux gérées par LaMa
             if on_step is not None:
                 on_step("inpaint")
-            clean_path = inpaint_image_file(src, regions, clean_dir / name, inpainter)
+            erase_regions = merge_regions_for_erase(regions)
+            clean_path = inpaint_image_file(src, erase_regions, clean_dir / name, inpainter)
             # étape 4 : retypographie de la traduction sur l'image nettoyée
             if on_step is not None:
                 on_step("typeset")

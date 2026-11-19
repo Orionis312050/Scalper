@@ -48,9 +48,12 @@ chapitre contient des images (désactivable avec `--no-ocr` / `"with_ocr": false
    référentiel de l'image réelle** (sur les très grandes pages, le modèle de détection redimensionne
    en interne et peut renvoyer des coordonnées hors image → rescale uniforme + clamp) ;
 2. **traduction** de chaque texte détecté par le LLM ;
-3. **inpainting** du texte original sur les images **brutes** (voir moteurs ci-dessous — LaMa efface
-   le texte entièrement, masque = polygone OCR dilaté, style « pinceau magique » ; seuls les pixels
-   masqués sont remplacés, le reste de la page est inchangé) → `export/images-clean/` ;
+3. **inpainting** du texte original sur les images **brutes** (voir moteurs ci-dessous) → `export/images-clean/`.
+   Les boîtes OCR (lignes de texte) sont d'abord **fusionnées en régions-bulles**
+   (`merge_regions_for_erase`, gap 50 px) : LaMa efface nettement mieux un grand masque continu
+   qu'une fine ligne seule. Masque = union rectangle paddé + polygone OCR, dilaté (style
+   « pinceau magique ») ; seuls les pixels masqués sont remplacés. Si le modèle ne change rien
+   (delta ~0, ex. mauvais fichier ONNX), repli : remplissage par la couleur de l'anneau ;
 4. **retypographie** : la traduction est redessinée au même endroit, centrée dans la boîte
    d'origine, **à la taille du texte d'origine** (plus grande police tenant dans la boîte OCR,
    hauteur = hauteur de boîte), avec une couleur contrastée avec le fond (Pillow)

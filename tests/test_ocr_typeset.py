@@ -377,6 +377,64 @@ class TestOCRTypeset(unittest.TestCase):
             dark = any(res.getpixel((px, py))[0] < 100 for px in range(50, 170) for py in range(50, 80))
             self.assertTrue(dark, "le texte traduit doit être redessiné dans la boîte")
 
+    def test_merge_regions_for_erase(self):
+        from scalper.typeset import merge_regions_for_erase
+
+        # 3 lignes proches -> 1 région bulle ; 1 boîte loin -> région séparée
+        regions = [
+            {"index": 0, "box": [100, 100, 200, 30], "text": "A"},
+            {"index": 1, "box": [110, 140, 180, 30], "text": "B"},
+            {"index": 2, "box": [120, 180, 160, 30], "text": "C"},
+            {"index": 3, "box": [400, 900, 200, 40], "text": "D"},
+        ]
+        merged = merge_regions_for_erase(regions, gap=50)
+        self.assertEqual(len(merged), 2)
+        boxes = sorted(tuple(m["box"]) for m in merged)
+        self.assertEqual(boxes[0], (100, 100, 200, 110))   # union des 3 lignes (x 100-300, y 100-210)
+        self.assertEqual(boxes[1], (400, 900, 200, 40))     # boîte isolée inchangée
+        self.assertEqual(merged[0]["index"], 0, "champs conservés (index de la 1ère boîte)")
+        # cap : deux boîtes à moins de `gap` mais dont l'union dépasse `cap` ne fusionnent pas
+        # A = y 0..1500, B = y 1520..1620 (gap 20 <= 50) -> union h=1620 : cap=2000 fusion, cap=1600 non
+        far = merge_regions_for_erase(
+            [{"index": 0, "box": [0, 0, 100, 1500]}, {"index": 1, "box": [0, 1520, 100, 100]}],
+            gap=50, cap=2000,
+        )
+        far2 = merge_regions_for_erase(
+            [{"index": 0, "box": [0, 0, 100, 1500]}, {"index": 1, "box": [0, 1520, 100, 100]}],
+            gap=50, cap=1600,
+        )
+        self.assertEqual(len(far), 1)
+        self.assertEqual(len(far2), 2)
+        # régions invalides ignorées
+        self.assertEqual(merge_regions_for_erase([{"index": 0, "box": [0, 0, 0, 5]}], ), [])
+
+    def test_typeset_chapter_inpaints_merged_bubble_regions(self):
+        """Étape 3 : l'inpainter reçoit les régions FUSIONNÉES (bulles), pas les lignes seules."""
+        from scalper.typeset import typeset_chapter
+
+        seen = []
+
+        class FakeInpainter:
+            def inpaint_image(self, img, regions):
+                seen.append([r["box"] for r in regions])
+                return img
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "images").mkdir()
+            img = Image.new("RGB", (400, 600), (255, 255, 255))
+            img.save(d / "images" / "p1.png")
+            (d / "ocr.json").write_text(json.dumps({"lang": "eng", "regions": [
+                {"index": 0, "image": "p1.png", "box": [50, 50, 200, 30], "text": "AAA"},
+                {"index": 1, "image": "p1.png", "box": [60, 90, 180, 30], "text": "BBB"},
+                {"index": 2, "image": "p1.png", "box": [50, 400, 200, 30], "text": "CCC"},
+            ]}), encoding="utf-8")
+            typeset_chapter(d, "fr", translations=["a", "b", "c"], inpainter=FakeInpainter())
+            self.assertEqual(len(seen), 1)
+            self.assertEqual(len(seen[0]), 2, "3 lignes -> 2 bulles fusionnées (gap 50)")
+            self.assertIn([50, 50, 200, 70], seen[0])   # union des 2 lignes proches
+            self.assertIn([50, 400, 200, 30], seen[0])  # bulle isolée
+
     def test_clamp_regions_clamps_box_and_poly(self):
         from scalper.typeset import _clamp_regions
 

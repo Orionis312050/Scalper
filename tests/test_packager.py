@@ -31,6 +31,10 @@ def _make_out(tmp: Path) -> Path:
     for name in ("1-a.png", "2-b.png", "10-c.png"):
         _png(ch1 / "images" / name, color=(255, 255, 255))          # originales
         _png(ch1 / "export" / "images-fr" / name, color=(200, 220, 255))  # traduites
+        _png(ch1 / "export" / "images-clean" / name, color=(250, 250, 250))  # nettoyées
+    (ch1 / "ocr.json").write_text(json.dumps({"lang": "en", "regions": []}), encoding="utf-8")
+    (ch1 / "meta.json").write_text(json.dumps({"title": "ch1"}), encoding="utf-8")
+    (ch1 / "chapter.fr.json").write_text(json.dumps({"blocks": []}), encoding="utf-8")
     ch2 = out / "raw" / "mangadex" / "ser1" / "ch2"
     _png(ch2 / "images" / "1.png")
     return out
@@ -111,6 +115,12 @@ class TestZipRunExport(unittest.TestCase):
             self.assertIn("images/ch2/1.png", names)  # ch2 : pas de traduction -> originales
             self.assertIn("pdf/ch1.pdf", names)
             self.assertIn("pdf/ch2.pdf", names)
+            # metadata/ embarquée par défaut (ocr.json, meta.json, chapter.<lang>.json…)
+            self.assertIn("metadata/ch1/ocr.json", names)
+            self.assertIn("metadata/ch1/meta.json", names)
+            self.assertIn("metadata/ch1/chapter.fr.json", names)
+            # cleaned/ PAS embarquée par défaut
+            self.assertFalse(any(n.startswith("cleaned/") for n in names))
             self.assertNotIn("state.json", names)
             self.assertNotIn("glossary.json", names)
             with zipfile.ZipFile(z) as zf:
@@ -128,6 +138,19 @@ class TestZipRunExport(unittest.TestCase):
             self.assertIn(z.name, remaining)
             self.assertIn("state.json", remaining)
             self.assertIn("raw", remaining)
+
+    def test_include_clean_embeds_cleaned_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = _make_out(Path(tmp))
+            z = zip_run_export(out, "mangadex", "ser1", "fr", ["ch1"], clean=False,
+                               when=datetime(2026, 3, 4, 5, 6), include_clean=True)
+            with zipfile.ZipFile(z) as zf:
+                names = zf.namelist()
+            self.assertEqual(
+                sorted(n for n in names if n.startswith("cleaned/ch1/")),
+                ["cleaned/ch1/1-a.png", "cleaned/ch1/10-c.png", "cleaned/ch1/2-b.png"],
+            )
+            self.assertIn("metadata/ch1/ocr.json", names)  # metadata toujours là
 
     def test_chapter_ids_default_scan(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -35,7 +35,7 @@ scalper run --source demo --series demo-1 --lang fr --mock-llm --out out
 | `scalper qa <source.json> <traduit.json> --lang fr` | score 0-100, pass si ≥ 80 |
 | `scalper export <traduit.json> --format md\|json\|html` | export Markdown / JSON / HTML |
 | `scalper run --source ... --series ... --lang fr [--force] [--src-lang ja] [--zip-export]` | pipeline complet end-to-end (`--force` = exporte même si la QA échoue ; `--src-lang` = langue d'entrée du chapitre : enregistrée dans `meta.json`, affichée dans l'UI et utilisée comme langue source de l'OCR ; `--zip-export` = zip final dans `out/`, voir ci-dessous) |
-| `scalper pack --out out --source mangadex --series <id> --lang fr [--no-clean]` | zippe un `out/` existant (même contenu qu'avec `--zip-export`) |
+| `scalper pack --out out --source mangadex --series <id> --lang fr [--no-clean] [--with-clean]` | zippe un `out/` existant (même contenu qu'avec `--zip-export` ; `--with-clean` embarque en plus `cleaned/`, debug inpainting) |
 
 ## OCR & remplacement du texte dans les images (automatique)
 
@@ -88,11 +88,21 @@ Scalper crée à la fin dans le dossier `out/` un **seul zip** nommé
 - `images/<chapitre>/<page>` : les pages du résultat — re-traduites (`export/images-<lang>/`)
   quand l'OCR/typeset a tourné, sinon les images d'origine — dans l'ordre des pages (tri naturel) ;
 - `pdf/<chapitre>.pdf` : un PDF par chapitre (Pillow, sans dépendance externe ; pages en RGB
-  redimensionnées à 1600 px max).
+  redimensionnées à 1600 px max) ;
+- `metadata/<chapitre>/*.json` : métadonnées du chapitre, dont **`ocr.json`** (texte détecté +
+  boîtes/polygones normalisés dans l'image) — utile pour déboguer placement/effacement quand on
+  n'a plus que le zip ;
+- `cleaned/<chapitre>/<page>` (**option**) : images nettoyées (texte original effacé par LaMa,
+  traduction pas encore redessinée) pour vérifier l'inpainting — `scalper pack --with-clean`,
+  `run --zip-include-clean`, ou `"zip_include_clean": true` dans `POST /run` (case à cocher UI).
 
 Puis **tout le reste du dossier `out/` est supprimé** (zip excepté — y compris `state.json` et
 `glossary.json` : pas de reprise après un export zippé). `scalper pack --no-clean` garde le reste.
 Le chemin du zip est renvoyé dans le résumé du run (`export_zip`).
+
+Pendant l'inpainting LaMa, chaque page loggue un diagnostic :
+`[scalper][lama] image 690x10000 : 28/28 régions inpaintées, couverture masque moyenne 20.9% du crop, 70.7s`
+(« masque vide » / couverture 0 % = coordonnées OCR hors image, voir `_normalize_polys`).
 
 **Moteurs d'inpainting** (protocol `Inpainter` dans `src/scalper/inpaint.py`, sélection par
 `SCALPER_INPAINT_ENGINE` ou `--inpaint-engine`, et `"inpaint_engine"` dans `POST /run`) :
@@ -130,8 +140,9 @@ les modèles ne sont téléchargés qu'une fois, dans le volume monté.
 `POST /run` accepte en plus `"src_lang": "ja"` (langue d'entrée du chapitre),
 `"ocr_engine": "paddle"` (moteur OCR : `tesseract` | `paddle`, défaut `SCALPER_OCR_ENGINE` ou `tesseract` —
 `paddle` dans le docker-compose),
-`"inpaint_engine": "lama"` (moteur d'inpainting : `simple` | `lama` | `auto`) et
-`"zip_export": true` (zip `export-<date>-<heure>-<minutes>.zip` à la fin, puis supprime le reste de `out/`).
+`"inpaint_engine": "lama"` (moteur d'inpainting : `simple` | `lama` | `auto`),
+`"zip_export": true` (zip `export-<date>-<heure>-<minutes>.zip` à la fin, puis supprime le reste de `out/`)
+et `"zip_include_clean": true` (embarque aussi `cleaned/` dans le zip, debug inpainting).
 
 ## Architecture
 

@@ -91,7 +91,18 @@ def _clamp_regions(regions: list[dict[str, Any]], width: int, height: int) -> li
         y1 = min(height, y + h)
         if x1 - x0 < 1 or y1 - y0 < 1:
             continue
-        out.append({**r, "box": [x0, y0, x1 - x0, y1 - y0]})
+        r2 = {**r, "box": [x0, y0, x1 - x0, y1 - y0]}
+        poly = r.get("poly")
+        if poly:
+            # clamp aussi le polygone dans l'image (coordonnées OCR qui dépassent)
+            try:
+                r2["poly"] = [
+                    [min(max(int(float(px)), 0), width), min(max(int(float(py)), 0), height)]
+                    for px, py in poly
+                ]
+            except (TypeError, ValueError):
+                r2["poly"] = poly
+        out.append(r2)
     return out
 
 

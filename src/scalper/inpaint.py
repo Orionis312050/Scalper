@@ -196,6 +196,7 @@ class LamaInpainter:
                     "(ou SCALPER_INPAINT_ENGINE=simple pour rester sur le remplissage simple)"
                 ) from e
             model = self._resolve_model_path()
+            print(f"[scalper][lama] modèle ONNX : {model}", file=sys.stderr)
             self._session = ort.InferenceSession(str(model), providers=["CPUExecutionProvider"])
         return self._session
 
@@ -215,30 +216,39 @@ class LamaInpainter:
 
     def _draw_region_mask(self, draw, region: dict[str, Any], box: tuple[int, int, int, int],
                           cx0: int, cy0: int, sx: float, sy: float) -> None:
-        """Dessine le masque d'une région dans un ImageDraw : polygone OCR si disponible,
-        sinon rectangle (boîte élargie d'un pad de 10 %)."""
-        poly = region.get("poly")
-        if poly and len(poly) >= 3:
-            try:
-                pts = [((float(px) - cx0) * sx, (float(py) - cy0) * sy) for px, py in poly]
-                draw.polygon(pts, fill=255)
-                return
-            except (TypeError, ValueError):
-                pass
+        """Dessine le masque d'une région dans un ImageDraw.
+
+        **Union** du rectangle (boîte élargie d'un pad de 10 %) et du polygone OCR quand
+        il est disponible : le rectangle garantit un masque non vide même si le polygone
+        est absent, invalide ou hors du crop (coordonnées OCR non normalisées), le polygone
+        affine la zone de texte. Comme on ne recolle que les pixels masqués, élargir le
+        masque ne touche pas au reste de l'image."""
         x, y, w, h = box
         pad = max(2, int(min(w, h) * 0.1))
         draw.rectangle(
             [(x - pad - cx0) * sx, (y - pad - cy0) * sy, (x + w + pad - cx0) * sx, (y + h + pad - cy0) * sy],
             fill=255,
         )
+        poly = region.get("poly")
+        if poly and len(poly) >= 3:
+            try:
+                pts = [((float(px) - cx0) * sx, (float(py) - cy0) * sy) for px, py in poly]
+                draw.polygon(pts, fill=255)
+            except (TypeError, ValueError):
+                pass
 
     def inpaint_image(self, img, regions: list[dict[str, Any]]):
+        import time
+
         import numpy as np
         from PIL import Image, ImageDraw, ImageFilter
 
         sess = self._get_session()
         size = self._input_size
         arr = np.array(img.convert("RGB"))
+        t0 = time.time()
+        n_done = 0
+        cov_sum = 0.0
         for r in regions:
             box = _box_of(r)
             if box is None:
@@ -262,8 +272,21 @@ class LamaInpainter:
             pred = np.clip(out.transpose(1, 2, 0), 0, 255).astype(np.uint8)
             pred_crop = Image.fromarray(pred).resize((cw, ch), Image.LANCZOS)
             m = np.asarray(mask_crop) > 0
+            if not m.any():
+                # ne devrait plus arriver (masque = union rect + poly) : log explicite
+                print(f"[scalper][lama] ATTENTION masque vide pour la région box={list(box)} (image {img.width}x{img.height})", file=sys.stderr)
+                continue
+            cov_sum += float(m.mean())
+            n_done += 1
             sub = arr[cy0:cy1, cx0:cx1]
             sub[m] = np.asarray(pred_crop)[m]
+        if n_done:
+            cov = cov_sum / n_done
+            print(
+                f"[scalper][lama] image {img.width}x{img.height} : {n_done}/{len(regions)} régions inpaintées, "
+                f"couverture masque moyenne {cov:.1%} du crop, {time.time() - t0:.1f}s",
+                file=sys.stderr,
+            )
         return Image.fromarray(arr)
 
 

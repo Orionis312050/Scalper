@@ -35,6 +35,7 @@ def run_pipeline(
     inpaint_engine: str | None = None,
     ocr_engine: str | None = None,
     zip_export: bool = False,
+    zip_include_clean: bool = False,
 ) -> dict[str, Any]:
     out_root = Path(out_root)
     fetcher = fetcher or RespectfulFetcher(min_delay=1.0)
@@ -107,7 +108,8 @@ def run_pipeline(
 
         chapter_ids = [r["chapter"]["id"] for r in results if "chapter" in r]
         _fire("zip")
-        summary["export_zip"] = str(zip_run_export(out_root, source_id, series_id, lang, chapter_ids))
+        summary["export_zip"] = str(zip_run_export(out_root, source_id, series_id, lang, chapter_ids,
+                                                   include_clean=zip_include_clean))
         _fire("clean")
     return summary
 

@@ -6,7 +6,12 @@
 - `images/<chapitre>/<page>` : les images du résultat — les pages re-traduites
   `export/images-<lang>/` quand l'OCR/typeset a tourné, sinon les images d'origine ;
 - `pdf/<chapitre>.pdf` : un PDF par chapitre, pages dans l'ordre (tri naturel :
-  1, 2, …, 10), redimensionnées à PDF_MAX_SIDE px max pour alléger le PDF.
+  1, 2, …, 10), redimensionnées à PDF_MAX_SIDE px max pour alléger le PDF ;
+- `metadata/<chapitre>/*.json` : les métadonnées du chapitre (ocr.json avec les boîtes
+  détectées, meta.json, chapter.json, chapter.<lang>.json, qa.<lang>.json…) — utile pour
+  déboguer le placement/effacement du texte quand seul le zip est conservé ;
+- `cleaned/<chapitre>/<page>` (si `include_clean=True`) : les images nettoyées
+  (texte original effacé, traduction pas encore redessinée) pour vérifier l'inpainting.
 
 Ensuite, sauf `clean=False`, **tout le reste du dossier `out` est supprimé**
 (y compris `state.json` et `glossary.json` : pas de reprise après un export zippé).
@@ -61,6 +66,14 @@ def build_chapter_pdf(pages: list[Path], pdf_path: Path) -> Path:
     return pdf_path
 
 
+def chapter_metadata_files(chapter_dir: Path) -> list[Path]:
+    """Fichiers JSON de métadonnées d'un chapitre (ocr.json, meta.json, chapter*.json,
+    qa*.json…) à embarquer dans `metadata/<chapitre>/` du zip."""
+    if not chapter_dir.is_dir():
+        return []
+    return sorted(p for p in chapter_dir.iterdir() if p.is_file() and p.suffix.lower() == ".json")
+
+
 def zip_run_export(
     out_root: Path | str,
     source_id: str,
@@ -69,9 +82,12 @@ def zip_run_export(
     chapter_ids: list[str] | None = None,
     clean: bool = True,
     when: datetime | None = None,
+    include_metadata: bool = True,
+    include_clean: bool = False,
 ) -> Path:
     """Crée `out_root/export-<AAAA-MM-JJ-HH-MM>.zip` avec les images + PDF des chapitres
-    du run, puis (clean=True) supprime tout le reste du dossier `out_root`."""
+    du run (plus `metadata/<chapitre>/*.json`, et `cleaned/<chapitre>/` si `include_clean`),
+    puis (clean=True) supprime tout le reste du dossier `out_root`."""
     from .scraper import chapter_dir
 
     out_root = Path(out_root)
@@ -95,6 +111,15 @@ def zip_run_export(
             build_chapter_pdf(pages, pdf_tmp)
             z.write(pdf_tmp, f"pdf/{cid}.pdf")
             shutil.rmtree(pdf_tmp.parent, ignore_errors=True)
+            if include_metadata:
+                for meta in chapter_metadata_files(cdir):
+                    z.write(meta, f"metadata/{cid}/{meta.name}")
+            if include_clean:
+                clean_dir = cdir / "export" / "images-clean"
+                if clean_dir.is_dir():
+                    for p in sorted(clean_dir.iterdir()):
+                        if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES:
+                            z.write(p, f"cleaned/{cid}/{p.name}")
     if clean:
         for p in out_root.iterdir():
             if p == zip_path:

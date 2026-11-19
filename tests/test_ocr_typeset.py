@@ -377,6 +377,24 @@ class TestOCRTypeset(unittest.TestCase):
             dark = any(res.getpixel((px, py))[0] < 100 for px in range(50, 170) for py in range(50, 80))
             self.assertTrue(dark, "le texte traduit doit être redessiné dans la boîte")
 
+    def test_clamp_regions_clamps_box_and_poly(self):
+        from scalper.typeset import _clamp_regions
+
+        regions = [{
+            "index": 0,
+            "box": [100, 9500, 200, 900],           # dépasse en bas (image 690x10000)
+            "text": "x",
+            "poly": [[100, 9500], [300, 9500], [300, 19000], [100, 19000]],  # idem, hors image
+        }]
+        out = _clamp_regions(regions, 690, 10000)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["box"], [100, 9500, 200, 500])  # clampé à hauteur 10000
+        for px, py in out[0]["poly"]:
+            self.assertGreaterEqual(px, 0)
+            self.assertLessEqual(px, 690)
+            self.assertGreaterEqual(py, 0)
+            self.assertLessEqual(py, 10000)
+
     def test_degenerate_region_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             src, out = Path(tmp) / "p.png", Path(tmp) / "out.png"

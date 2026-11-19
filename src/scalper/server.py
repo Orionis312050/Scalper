@@ -3,7 +3,7 @@
 Endpoints :
 - GET  /healthz
 - GET  /            interface web (barre de progression + previews source/traduit)
-- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"ocr_engine"?,"inpaint_engine"?,"zip_export"?,"force"?,"out"?,"background"?}
+- POST /run  {"source","series","lang","group"?,"max_chapters"?,"mock_llm"?,"with_ocr"?,"ocr_engine"?,"inpaint_engine"?,"zip_export"?,"zip_include_clean"?,"force"?,"out"?,"background"?}
              avec "background": true -> 202 {"job": id} et le run tourne en thread
 - GET  /jobs/<id>  état du job {status, progress{done,total,current}, result, error}
 - GET  /api/chapter?out=&source=&series=&chapter=&lang=  données de preview (meta, blocs source/traduits, images)
@@ -122,6 +122,7 @@ def _start_job(body: dict) -> str:
                 inpaint_engine=body.get("inpaint_engine"),
                 ocr_engine=body.get("ocr_engine"),
                 zip_export=bool(body.get("zip_export", False)),
+                zip_include_clean=bool(body.get("zip_include_clean", False)),
                 on_progress=on_progress,
                 on_step=on_step,
             )
@@ -239,7 +240,8 @@ blockquote{margin:.3rem 0;padding:.25rem .7rem;border-left:3px solid var(--indig
 <label class="switch"><input type="checkbox" id="r-mock"><span class="track"></span>mock-llm (démo hors ligne)</label>
 <label class="switch"><input type="checkbox" id="r-force"><span class="track"></span>forcer l'export même si la QA échoue</label>
 <label class="switch"><input type="checkbox" id="r-ocr" checked><span class="track"></span>OCR + remplacement du texte dans les images</label>
-<label class="switch"><input type="checkbox" id="r-zip" checked><span class="track"></span>zip export-&lt;date&gt;-&lt;heure&gt;-&lt;minutes&gt;.zip à la fin (images + PDF, le reste de out/ est supprimé)</label>
+<label class="switch"><input type="checkbox" id="r-zip" checked><span class="track"></span>zip export-&lt;date&gt;-&lt;heure&gt;-&lt;minutes&gt;.zip à la fin (images + PDF + metadata/, le reste de out/ est supprimé)</label>
+<label class="switch"><input type="checkbox" id="r-zip-clean"><span class="track"></span>aussi embarquer cleaned/ dans le zip (images nettoyées avant retypographie — debug inpainting)</label>
 </div>
 <button class="btn" onclick="runPipeline()">Lancer le pipeline</button>
 </div>
@@ -260,7 +262,7 @@ if(TOKEN) hideLogin(); else showLogin();
 async function runPipeline(){
   const g=document.getElementById('r-group').value, m=document.getElementById('r-max').value, sl=document.getElementById('r-srclang').value;
   const oe=document.getElementById('r-ocrengine').value, ie=document.getElementById('r-inpaint').value;
-  const body={source:document.getElementById('r-source').value, series:document.getElementById('r-series').value, lang:document.getElementById('r-lang').value, mock_llm:document.getElementById('r-mock').checked, force:document.getElementById('r-force').checked, with_ocr:document.getElementById('r-ocr').checked, zip_export:document.getElementById('r-zip').checked, background:true};
+  const body={source:document.getElementById('r-source').value, series:document.getElementById('r-series').value, lang:document.getElementById('r-lang').value, mock_llm:document.getElementById('r-mock').checked, force:document.getElementById('r-force').checked, with_ocr:document.getElementById('r-ocr').checked, zip_export:document.getElementById('r-zip').checked, zip_include_clean:document.getElementById('r-zip-clean').checked, background:true};
   if(g) body.group=g; if(m) body.max_chapters=Number(m); if(sl) body.src_lang=sl; if(oe) body.ocr_engine=oe; if(ie) body.inpaint_engine=ie;
   document.getElementById('out').textContent='en cours…';
   document.getElementById('previews').innerHTML='';

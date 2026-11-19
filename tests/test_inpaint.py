@@ -188,13 +188,28 @@ class TestCropAndMask(unittest.TestCase):
         inp._draw_region_mask(d, {"box": [100, 100, 50, 30]}, (100, 100, 50, 30), 0, 0, 1.0, 1.0)
         self.assertEqual(mask.getpixel((125, 115)), 255)
         self.assertEqual(mask.getpixel((10, 10)), 0)
-        # avec poly : seul le polygone est masqué
+        # avec poly : UNION du rectangle paddé (pad = 10 % de min(w,h) = 10) et du polygone
         mask2 = Image.new("L", (size, size), 0)
         d2 = ImageDraw.Draw(mask2)
         poly = [[100, 100], [200, 100], [200, 200], [100, 200]]
         inp._draw_region_mask(d2, {"box": [100, 100, 100, 100], "poly": poly}, (100, 100, 100, 100), 0, 0, 1.0, 1.0)
-        self.assertEqual(mask2.getpixel((150, 150)), 255)
-        self.assertEqual(mask2.getpixel((90, 90)), 0)
+        self.assertEqual(mask2.getpixel((150, 150)), 255)   # dans le poly
+        self.assertEqual(mask2.getpixel((95, 95)), 255)     # dans le rectangle paddé [90..210]
+        self.assertEqual(mask2.getpixel((50, 50)), 0)       # hors des deux
+
+    def test_draw_region_mask_rect_saves_stale_poly(self):
+        """Robustesse : si le polygone OCR est hors du crop (coordonnées non normalisées),
+        le rectangle paddé garantit quand même un masque non vide -> le texte est effacé."""
+        inp = LamaInpainter()
+        size = LAMA_INPUT_SIZE
+        mask = Image.new("L", (size, size), 0)
+        d = ImageDraw.Draw(mask)
+        stale_poly = [[10000, 10000], [20000, 10000], [20000, 20000], [10000, 20000]]  # hors image
+        inp._draw_region_mask(d, {"box": [100, 100, 50, 30], "poly": stale_poly}, (100, 100, 50, 30), 0, 0, 1.0, 1.0)
+        import numpy as np
+
+        self.assertGreater(int((np.asarray(mask) > 0).sum()), 0, "le masque ne doit jamais être vide (rect de secours)")
+        self.assertEqual(mask.getpixel((125, 115)), 255)
 
 
 def _fake_onnxruntime_module(fill_value=200.0):

@@ -148,12 +148,17 @@ class PaddleOCR:
         if self._engine is None:
             paddle_lang = _PADDLE_LANGS.get((lang or self.lang), "en")
             tier = _paddle_tier(paddle_lang)
-            self._engine = _PaddleEngine(
+            kwargs: dict[str, Any] = dict(
                 lang=paddle_lang,
                 use_textline_orientation=True,  # texte vertical (manga JP)
                 text_detection_model_name=f"PP-OCRv6_{tier}_det",
                 text_recognition_model_name=f"PP-OCRv6_{tier}_rec",
             )
+            # SCALPER_PADDLE_DEVICE=gpu:0 (ex. RTX 2060, image Dockerfile.gpu) ; sinon auto (cpu sur l'image CPU)
+            device = os.environ.get("SCALPER_PADDLE_DEVICE", "").strip()
+            if device:
+                kwargs["device"] = device
+            self._engine = _PaddleEngine(**kwargs)
         results = self._engine.predict(str(image_path))
         if results is None:
             return []

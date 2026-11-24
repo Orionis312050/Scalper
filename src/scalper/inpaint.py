@@ -215,8 +215,20 @@ class LamaInpainter:
                 ) from e
             model = self._resolve_model_path()
             print(f"[scalper][lama] modèle ONNX : {model}", file=sys.stderr)
-            self._session = ort.InferenceSession(str(model), providers=["CPUExecutionProvider"])
+            self._session = ort.InferenceSession(str(model), providers=self._providers(ort))
         return self._session
+
+    def _providers(self, ort) -> list[str]:
+        """CUDA si SCALPER_LAMA_DEVICE=gpu ET disponible (onnxruntime-gpu), sinon CPU
+        (avec un warning si le GPU était demandé mais indisponible)."""
+        want_gpu = os.environ.get("SCALPER_LAMA_DEVICE", "cpu").strip().lower() in ("gpu", "cuda", "gpu:0")
+        get_avail = getattr(ort, "get_available_providers", None)
+        available = get_avail() if callable(get_avail) else ["CPUExecutionProvider"]
+        if want_gpu and "CUDAExecutionProvider" in available:
+            return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        if want_gpu:
+            print("[scalper][lama] SCALPER_LAMA_DEVICE=gpu mais CUDA indisponible (onnxruntime CPU ?) -> repli CPU", file=sys.stderr)
+        return ["CPUExecutionProvider"]
 
     def _crop_rect(self, box: tuple[int, int, int, int], img_w: int, img_h: int) -> tuple[int, int, int, int]:
         """Crop carré centré sur la boîte, avec contexte (côté >= 2x la boîte et >= min_context),

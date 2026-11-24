@@ -1,0 +1,45 @@
+# Image GPU (NVIDIA, ex. RTX 2060 / 6 Go VRAM) — build :
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+# Prérequis hôte : driver NVIDIA >= 525 (runtime CUDA 12.6) + NVIDIA Container Toolkit
+# (nvidia-ctk) installé et runtime par défaut configuré.
+# L'image par défaut (CPU) reste le Dockerfile racine.
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr fonts-dejavu-core \
+    libgl1 libglib2.0-0 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Runtime CUDA 12.6 + cuDNN en wheels pip : le driver (libcuda) est injecté dans le
+# conteneur par le NVIDIA Container Toolkit au lancement.
+RUN pip install --no-cache-dir nvidia-cuda-runtime-cu12 nvidia-cudnn-cu12
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY src ./src
+
+# Paddle GPU 3.x non publié sur PyPI : index Baidu cu126 (paddlepaddle-gpu==3.2.2,
+# même pin <3.3 qu'en CPU pour le bug oneDNN 3.3.x). onnxruntime-gpu pour LaMa en CUDA.
+# (pas d'extra .[ocr-paddle] ici : il tirerait le wheel CPU paddlepaddle en conflit)
+RUN pip install --no-cache-dir "paddlepaddle-gpu==3.2.2" \
+      -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ \
+    && pip install --no-cache-dir \
+      "paddleocr>=3.0" "pytesseract>=0.3.10" "pillow>=10.1" "onnxruntime-gpu" "numpy" \
+    && pip install --no-cache-dir -e .
+
+RUN useradd -m scalper && mkdir -p /app/data /app/out && chown -R scalper:scalper /app
+
+# Le conteneur démarre en root : l'entrypoint chown les répertoires montés
+# (bind mounts root côté hôte, ex. Coolify) puis droppe les privilèges (setpriv).
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')" || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["scalper", "serve", "--host", "0.0.0.0", "--port", "8000"]

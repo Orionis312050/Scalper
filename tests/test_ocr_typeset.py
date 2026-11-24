@@ -205,6 +205,25 @@ class TestPaddleOCRMapping(unittest.TestCase):
         self.assertEqual(seen["lang"], "japan")
         self.assertEqual(seen["text_recognition_model_name"], "PP-OCRv6_small_rec", "tiny ne lit pas le japonais")
 
+    def test_device_env_forwarded_to_engine(self):
+        from scalper.ocr import PaddleOCR
+
+        seen = {}
+
+        class FakeEngine:
+            def __init__(self, **kw):
+                seen.update(kw)
+
+            def predict(self, path):
+                return []
+
+        fake_mod = types.ModuleType("paddleocr")
+        fake_mod.PaddleOCR = FakeEngine
+        with mock.patch.dict(sys.modules, {"paddleocr": fake_mod}):
+            with mock.patch.dict(os.environ, {"SCALPER_PADDLE_DEVICE": "gpu:0"}):
+                PaddleOCR(lang="eng").recognize(Path("p.png"))
+        self.assertEqual(seen.get("device"), "gpu:0")
+
     def test_missing_paddle_raises_clear_error(self):
         from scalper.ocr import PaddleOCR
 

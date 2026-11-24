@@ -154,6 +154,29 @@ les modèles ne sont téléchargés qu'une fois, dans le volume monté.
 `"zip_export": true` (zip `export-<date>-<heure>-<minutes>.zip` à la fin, puis supprime le reste de `out/`)
 et `"zip_include_clean": true` (embarque aussi `cleaned/` dans le zip, debug inpainting).
 
+## GPU NVIDIA (ex. RTX 2060, 6 Go VRAM)
+
+Le modèle recommandé reste **PP-OCRv6_medium** (`SCALPER_PADDLE_OCR_TIER=medium`) : 34,5 M params,
+moins de 1 Go de VRAM en inférence — la RTX 2060 suffit largement, et le gain de vitesse est
+conséquent (le doc annonce 0,13 s/page sur A100 ; sur RTX 2060 comptez une fraction de seconde).
+`PaddleOCR-VL` (VLM 0,9 B) n'est PAS conseillé ici : trop lourd/limite en 6 Go et mauvais outil
+(parsing de documents, pas de bulles).
+
+Déploiement GPU (opt-in, l'image par défaut reste CPU) :
+
+```bash
+# prérequis hôte : driver NVIDIA >= 525 (CUDA 12.6) + NVIDIA Container Toolkit (nvidia-ctk)
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+# vérif : docker compose exec scalper nvidia-smi
+```
+
+- `Dockerfile.gpu` : runtime CUDA 12.6 + cuDNN en wheels pip (`nvidia-cuda-runtime-cu12`,
+  `nvidia-cudnn-cu12`), `paddlepaddle-gpu==3.2.2` depuis l'index Baidu cu126 (les wheels GPU 3.x
+  ne sont pas sur PyPI), `onnxruntime-gpu` pour LaMa.
+- `docker-compose.gpu.yml` : réserve 1 GPU (`deploy.resources.reservations.devices`, driver
+  `nvidia`) et pose `SCALPER_PADDLE_DEVICE=gpu:0` (PaddleOCR sur le GPU) + `SCALPER_LAMA_DEVICE=gpu`
+  (big-lama en CUDA). Sans ces variables, tout retombe sur le CPU automatiquement.
+
 ## Architecture
 
 - **Skills Mistral** (workspace, v1) : `manga-scraper`, `chapter-cleaner`,

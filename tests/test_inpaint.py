@@ -232,7 +232,7 @@ class TestCropAndMask(unittest.TestCase):
         self.assertEqual(mask.getpixel((125, 115)), 255)
 
 
-def _fake_onnxruntime_module(fill_value=200.0, identity=False):
+def _fake_onnxruntime_module(fill_value=200.0, identity=False, available_providers=None):
     """Module onnxruntime factice : session qui renvoie `fill_value` dans le masque et
     recopopie l'entrée (x255) hors masque, comme le vrai modèle.
     `identity=True` : simule un modèle no-op (sortie = entrée, delta nul)."""
@@ -262,6 +262,7 @@ def _fake_onnxruntime_module(fill_value=200.0, identity=False):
 
     mod.InferenceSession = FakeSession
     mod.SessionOptions = SessionOptions
+    mod.get_available_providers = lambda: (available_providers or ["CPUExecutionProvider"])
     return mod, FakeSession
 
 
@@ -283,6 +284,30 @@ class TestLamaInpainter(unittest.TestCase):
                 with self.assertRaises(RuntimeError) as cm:
                     inp._get_session()
             self.assertIn("inpaint-lama", str(cm.exception))
+
+    def test_providers_cuda_when_gpu_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp) / "lama_fp32.onnx"
+            model.write_bytes(b"fake")
+            fake_mod, fake_session_cls = _fake_onnxruntime_module(
+                available_providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+            with mock.patch.dict(sys.modules, {"onnxruntime": fake_mod}):
+                with mock.patch.dict(os.environ, {"SCALPER_LAMA_DEVICE": "gpu"}):
+                    inp = LamaInpainter(model_path=model)
+                    inp._get_session()
+            self.assertEqual(fake_session_cls.instances[-1].providers,
+                             ["CUDAExecutionProvider", "CPUExecutionProvider"])
+
+    def test_providers_cpu_fallback_when_cuda_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp) / "lama_fp32.onnx"
+            model.write_bytes(b"fake")
+            fake_mod, fake_session_cls = _fake_onnxruntime_module()  # CPU only
+            with mock.patch.dict(sys.modules, {"onnxruntime": fake_mod}):
+                with mock.patch.dict(os.environ, {"SCALPER_LAMA_DEVICE": "gpu"}):
+                    inp = LamaInpainter(model_path=model)
+                    inp._get_session()
+            self.assertEqual(fake_session_cls.instances[-1].providers, ["CPUExecutionProvider"])
 
     def test_inpaint_image_composites_only_masked_pixels(self):
         with tempfile.TemporaryDirectory() as tmp:

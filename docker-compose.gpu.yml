@@ -1,0 +1,24 @@
+# Override GPU (NVIDIA, ex. RTX 2060) — build + up :
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Prérequis hôte : driver NVIDIA >= 525 (runtime CUDA 12.6) + NVIDIA Container Toolkit
+# (`nvidia-ctk runtime configure --runtime=docker` + restart docker), puis `nvidia-smi`
+# dans le conteneur pour vérifier.
+#
+# L'override merge `environment` (clé par clé) avec docker-compose.yml : on n'y met
+# que les variables GPU.
+services:
+  scalper:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      SCALPER_PADDLE_DEVICE: gpu:0   # PaddleOCR / PaddleX sur le GPU (PP-OCRv6_medium, < 1 Go VRAM)
+      SCALPER_LAMA_DEVICE: gpu       # big-lama ONNX en CUDA via onnxruntime-gpu

@@ -80,6 +80,13 @@ PaddleOCR : l'image Docker embarque déjà les deux moteurs (`pip install ".[ocr
 vérifié localement : 3.3.1 crashe, 3.2.2 fonctionne.
 Le tier PP-OCRv6 se règle via `SCALPER_PADDLE_OCR_TIER` (`tiny|small|medium`, défaut `medium` = défaut
 PaddleOCR 3.7 ; `tiny` ne reconnaît pas le japonais, pas de kana → bascule auto en `small`).
+⚠️ Par défaut, le **doc unwarping (UVDoc) et la classification d'orientation de page sont désactivés**
+(`use_doc_unwarping=False`, `use_doc_orientation_classify=False`) : actifs par défaut dans PaddleOCR 3.7,
+ils faussent le mapping des coordonnées des boîtes de détection (offsets de dizaines de px, textes de
+bulles manqués — vérifié sur page synthétique). Réactiver via `SCALPER_PADDLE_DOC_UNWARP=1` /
+`SCALPER_PADDLE_DOC_ORIENT=1` pour des scans photo déformés. Détection : `SCALPER_PADDLE_DET_BOX_THRESH`
+(défaut 0.5) et `SCALPER_PADDLE_DET_UNCLIP` (défaut 2.0) — boîtes un peu plus larges = meilleur
+recouvrement pour l'effacement LaMa. `use_textline_orientation=True` conservé (texte vertical JP).
 
 Commandes manuelles : `scalper ocr <chapter_dir> [--mock-ocr]` et `scalper typeset <chapter_dir> --lang fr [--inpaint-engine lama]`.
 

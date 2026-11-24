@@ -113,6 +113,20 @@ def _normalize_polys(polys: list, img_size: tuple[int, int] | None) -> list:
 _PADDLE_TIERS = ("tiny", "small", "medium")
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_float(name: str, default: float) -> float:
+    v = os.environ.get(name)
+    if v is None or not v.strip():
+        return default
+    return float(v)
+
+
 def _paddle_tier(paddle_lang: str) -> str:
     """Tier PP-OCRv6 : SCALPER_PADDLE_OCR_TIER (défaut `medium`, le défaut de PaddleOCR 3.7).
     `tiny` ne supporte pas le japonais (pas de kana dans son dictionnaire) -> on remonte à `small`."""
@@ -151,6 +165,17 @@ class PaddleOCR:
             kwargs: dict[str, Any] = dict(
                 lang=paddle_lang,
                 use_textline_orientation=True,  # texte vertical (manga JP)
+                # /!\ doc unwarping (UVDoc) et classification d'orientation de page sont
+                # actifs par défaut dans PaddleOCR 3.7 et faussent le mapping des coordonnées
+                # des boîtes de détection (offsets de dizaines de px, textes manqués) :
+                # on les désactive par défaut pour les pages manga. Réactivables par env.
+                use_doc_unwarping=_env_bool("SCALPER_PADDLE_DOC_UNWARP", False),
+                use_doc_orientation_classify=_env_bool("SCALPER_PADDLE_DOC_ORIENT", False),
+                # détection : seuils un peu plus souples que les défauts (0.6 / 1.5) pour
+                # attraper les petits textes de bulles ; boîtes un peu plus larges = meilleur
+                # recouvrement pour l'effacement LaMa ensuite.
+                text_det_box_thresh=_env_float("SCALPER_PADDLE_DET_BOX_THRESH", 0.5),
+                text_det_unclip_ratio=_env_float("SCALPER_PADDLE_DET_UNCLIP", 2.0),
                 text_detection_model_name=f"PP-OCRv6_{tier}_det",
                 text_recognition_model_name=f"PP-OCRv6_{tier}_rec",
             )

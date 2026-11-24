@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -109,10 +110,27 @@ def _normalize_polys(polys: list, img_size: tuple[int, int] | None) -> list:
         return polys  # format inattendu : on ne touche à rien
 
 
+_PADDLE_TIERS = ("tiny", "small", "medium")
+
+
+def _paddle_tier(paddle_lang: str) -> str:
+    """Tier PP-OCRv6 : SCALPER_PADDLE_OCR_TIER (défaut `medium`, le défaut de PaddleOCR 3.7).
+    `tiny` ne supporte pas le japonais (pas de kana dans son dictionnaire) -> on remonte à `small`."""
+    tier = os.environ.get("SCALPER_PADDLE_OCR_TIER", "medium").strip().lower()
+    if tier not in _PADDLE_TIERS:
+        raise ValueError(f"SCALPER_PADDLE_OCR_TIER inconnu : {tier!r} (tiny|small|medium)")
+    if tier == "tiny" and paddle_lang == "japan":
+        print("[scalper][ocr] PP-OCRv6_tiny ne lit pas le japonais (pas de kana) -> tier small", file=sys.stderr)
+        tier = "small"
+    return tier
+
+
 class PaddleOCR:
     """OCR via PaddleOCR (gratuit, 100 % local, meilleur sur texte stylisé/bulles).
 
     Nécessite : pip install -e ".[ocr-paddle]" (paddlepaddle + paddleocr).
+    Par défaut : PP-OCRv6_medium (défaut PaddleOCR 3.7) ; tier réglable via
+    SCALPER_PADDLE_OCR_TIER (tiny|small|medium).
     """
 
     def __init__(self, lang: str = "eng") -> None:
@@ -129,7 +147,13 @@ class PaddleOCR:
             ) from e
         if self._engine is None:
             paddle_lang = _PADDLE_LANGS.get((lang or self.lang), "en")
-            self._engine = _PaddleEngine(lang=paddle_lang, use_textline_orientation=True)
+            tier = _paddle_tier(paddle_lang)
+            self._engine = _PaddleEngine(
+                lang=paddle_lang,
+                use_textline_orientation=True,  # texte vertical (manga JP)
+                text_detection_model_name=f"PP-OCRv6_{tier}_det",
+                text_recognition_model_name=f"PP-OCRv6_{tier}_rec",
+            )
         results = self._engine.predict(str(image_path))
         if results is None:
             return []

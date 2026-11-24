@@ -78,6 +78,8 @@ PaddleOCR : l'image Docker embarque déjà les deux moteurs (`pip install ".[ocr
 `paddlepaddle` est épinglé `<3.3` : la 3.3.x plante en inférence CPU oneDNN
 (`ConvertPirAttribute2RuntimeAttribute ... ArrayAttribute<DoubleAttribute>`, Paddle#79749) —
 vérifié localement : 3.3.1 crashe, 3.2.2 fonctionne.
+Le tier PP-OCRv6 se règle via `SCALPER_PADDLE_OCR_TIER` (`tiny|small|medium`, défaut `medium` = défaut
+PaddleOCR 3.7 ; `tiny` ne reconnaît pas le japonais, pas de kana → bascule auto en `small`).
 
 Commandes manuelles : `scalper ocr <chapter_dir> [--mock-ocr]` et `scalper typeset <chapter_dir> --lang fr [--inpaint-engine lama]`.
 

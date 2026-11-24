@@ -163,6 +163,48 @@ class TestPaddleOCRMapping(unittest.TestCase):
         self.assertAlmostEqual(w, 590, delta=10)
         self.assertAlmostEqual(h, 450, delta=10)
 
+    def test_tier_env_selects_model_names(self):
+        from scalper.ocr import PaddleOCR
+
+        seen = {}
+
+        class FakeEngine:
+            def __init__(self, **kw):
+                seen.update(kw)
+
+            def predict(self, path):
+                return [{"rec_texts": ["Hi"], "rec_scores": [0.9],
+                         "dt_polys": [[[0, 0], [10, 0], [10, 10], [0, 10]]]}]
+
+        fake_mod = types.ModuleType("paddleocr")
+        fake_mod.PaddleOCR = FakeEngine
+        with mock.patch.dict(sys.modules, {"paddleocr": fake_mod}):
+            with mock.patch.dict(os.environ, {"SCALPER_PADDLE_OCR_TIER": "small"}):
+                PaddleOCR(lang="eng").recognize(Path("p.png"))
+        self.assertEqual(seen["text_detection_model_name"], "PP-OCRv6_small_det")
+        self.assertEqual(seen["text_recognition_model_name"], "PP-OCRv6_small_rec")
+        self.assertTrue(seen["use_textline_orientation"])
+
+    def test_tiny_bumped_to_small_for_japanese(self):
+        from scalper.ocr import PaddleOCR
+
+        seen = {}
+
+        class FakeEngine:
+            def __init__(self, **kw):
+                seen.update(kw)
+
+            def predict(self, path):
+                return []
+
+        fake_mod = types.ModuleType("paddleocr")
+        fake_mod.PaddleOCR = FakeEngine
+        with mock.patch.dict(sys.modules, {"paddleocr": fake_mod}):
+            with mock.patch.dict(os.environ, {"SCALPER_PADDLE_OCR_TIER": "tiny"}):
+                PaddleOCR(lang="jpn").recognize(Path("p.png"))
+        self.assertEqual(seen["lang"], "japan")
+        self.assertEqual(seen["text_recognition_model_name"], "PP-OCRv6_small_rec", "tiny ne lit pas le japonais")
+
     def test_missing_paddle_raises_clear_error(self):
         from scalper.ocr import PaddleOCR
 

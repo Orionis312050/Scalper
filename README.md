@@ -184,6 +184,15 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
   `nvidia`) et pose `SCALPER_PADDLE_DEVICE=gpu:0` (PaddleOCR sur le GPU) + `SCALPER_LAMA_DEVICE=gpu`
   (big-lama en CUDA). Sans ces variables, tout retombe sur le CPU automatiquement.
 
+## Valeurs par défaut du run (env)
+
+`POST /run`, `scalper run` et le formulaire web prennent leurs valeurs par défaut dans l'env :
+`SCALPER_DEFAULT_SOURCE`, `SCALPER_DEFAULT_SERIES`, `SCALPER_DEFAULT_LANG` (cible),
+`SCALPER_DEFAULT_SRC_LANG` (entrée), `SCALPER_DEFAULT_OCR_ENGINE` (paddle = PP-OCRv6),
+`SCALPER_DEFAULT_INPAINT_ENGINE` (lama = big-lama), `SCALPER_ZIP_EXPORT`,
+`SCALPER_ZIP_INCLUDE_CLEAN` (embarque `cleaned/` — images nettoyées avant retypographie — dans le
+zip d'export). Exemple dans `docker-compose.yml` / `.env.example`.
+
 ## Architecture
 
 - **Skills Mistral** (workspace, v1) : `manga-scraper`, `chapter-cleaner`,

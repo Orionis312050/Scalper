@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import threading
 import time
@@ -206,6 +207,31 @@ class TestServer(unittest.TestCase):
             self.assertEqual(body["status"], "done")
             self.assertEqual(body["chapters"][0]["status"], "ok")
             self.assertTrue(body["chapters"][0].get("forced"))
+
+
+    def test_run_uses_env_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"SCALPER_DEFAULT_SOURCE": "demo", "SCALPER_DEFAULT_SERIES": "demo-1", "SCALPER_DEFAULT_LANG": "fr"}):
+                status, body = self._post("/run", {"mock_llm": True, "out": tmp, "max_chapters": 1})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["status"], "done")
+
+    def test_zip_include_clean_default_from_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"SCALPER_ZIP_INCLUDE_CLEAN": "true", "SCALPER_ZIP_EXPORT": "true"}):
+                with mock.patch("scalper.pipeline.run_pipeline", return_value={"status": "done"}) as rp:
+                    status, _ = self._post("/run", {"source": "demo", "series": "demo-1", "lang": "fr", "out": tmp})
+        self.assertEqual(status, 200)
+        self.assertTrue(rp.call_args.kwargs["zip_include_clean"])
+        self.assertTrue(rp.call_args.kwargs["zip_export"])
+
+    def test_index_prefilled_from_env(self):
+        with mock.patch.dict(os.environ, {"SCALPER_DEFAULT_SOURCE": "mangadex", "SCALPER_DEFAULT_SERIES": "abc-123", "SCALPER_DEFAULT_SRC_LANG": "en"}):
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/") as r:
+                page = r.read().decode("utf-8")
+        self.assertIn('value="mangadex"', page)
+        self.assertIn('value="abc-123"', page)
+        self.assertIn('value="en"', page)
 
 
 if __name__ == "__main__":

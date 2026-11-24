@@ -18,6 +18,7 @@ Endpoints :
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import mimetypes
 import os
@@ -94,6 +95,58 @@ def _authorized(headers) -> bool:
     return exp is not None and exp > time.time()
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _run_kwargs(body: dict, on_progress=None, on_step=None):
+    """(source, series, lang) + kwargs pour run_pipeline : champs du body, sinon défauts
+    env (SCALPER_DEFAULT_SOURCE / _SERIES / _LANG / _SRC_LANG, SCALPER_ZIP_EXPORT,
+    SCALPER_ZIP_INCLUDE_CLEAN). source/series/lang restent requis (body ou env)."""
+    def field(key: str, env: str):
+        v = body.get(key)
+        if v in (None, ""):
+            v = os.environ.get(env)
+        return v
+
+    zip_export = body.get("zip_export")
+    if zip_export is None:
+        zip_export = _env_bool("SCALPER_ZIP_EXPORT", False)
+    zip_clean = body.get("zip_include_clean")
+    if zip_clean is None:
+        zip_clean = _env_bool("SCALPER_ZIP_INCLUDE_CLEAN", False)
+    kw = dict(
+        out_root=body.get("out", "out"),
+        mock_llm=bool(body.get("mock_llm", False)),
+        max_chapters=body.get("max_chapters"),
+        group=body.get("group"),
+        with_ocr=bool(body.get("with_ocr", True)),
+        force=bool(body.get("force", False)),
+        src_lang=field("src_lang", "SCALPER_DEFAULT_SRC_LANG"),
+        inpaint_engine=body.get("inpaint_engine"),
+        ocr_engine=body.get("ocr_engine"),
+        zip_export=bool(zip_export),
+        zip_include_clean=bool(zip_clean),
+    )
+    if on_progress is not None:
+        kw["on_progress"] = on_progress
+    if on_step is not None:
+        kw["on_step"] = on_step
+    source = field("source", "SCALPER_DEFAULT_SOURCE")
+    series = field("series", "SCALPER_DEFAULT_SERIES")
+    lang = field("lang", "SCALPER_DEFAULT_LANG")
+    if not source:
+        raise KeyError("source")
+    if not series:
+        raise KeyError("series")
+    if not lang:
+        raise KeyError("lang")
+    return (source, series, lang), kw
+
+
 
 def _start_job(body: dict) -> str:
     """Lance run_pipeline dans un thread et retourne l'id du job."""
@@ -110,22 +163,8 @@ def _start_job(body: dict) -> str:
             def on_step(step: str) -> None:
                 job["progress"].update({"step": step})
 
-            summary = pipeline.run_pipeline(
-                body["source"], body["series"], body["lang"],
-                out_root=body.get("out", "out"),
-                mock_llm=bool(body.get("mock_llm", False)),
-                max_chapters=body.get("max_chapters"),
-                group=body.get("group"),
-                with_ocr=bool(body.get("with_ocr", True)),
-                force=bool(body.get("force", False)),
-                src_lang=body.get("src_lang"),
-                inpaint_engine=body.get("inpaint_engine"),
-                ocr_engine=body.get("ocr_engine"),
-                zip_export=bool(body.get("zip_export", False)),
-                zip_include_clean=bool(body.get("zip_include_clean", False)),
-                on_progress=on_progress,
-                on_step=on_step,
-            )
+            pos, kw = _run_kwargs(body, on_progress=on_progress, on_step=on_step)
+            summary = pipeline.run_pipeline(*pos, **kw)
             job["result"] = summary
             job["status"] = "done"
         except Exception as e:
@@ -227,10 +266,10 @@ blockquote{margin:.3rem 0;padding:.25rem .7rem;border-left:3px solid var(--indig
 <div class="card">
 <h3 style="margin:.1rem 0 .4rem">Lancer un pipeline <span style="color:var(--muted);font-weight:400;font-size:.8rem">scrape → clean → translate → QA → OCR/inpainting → export</span></h3>
 <div class="grid2">
-<div><label class="f" for="r-source">source (demo, mangadex)</label><input id="r-source" type="text" value="demo"></div>
-<div><label class="f" for="r-series">id série</label><input id="r-series" type="text" value="demo-1"></div>
-<div><label class="f" for="r-lang">langue cible (fr, en…)</label><input id="r-lang" type="text" value="fr"></div>
-<div><label class="f" for="r-srclang">langue d'entrée du chapitre (en, ja, fr…)</label><input id="r-srclang" type="text" value=""></div>
+<div><label class="f" for="r-source">source (demo, mangadex)</label><input id="r-source" type="text" value="__DEFAULT_SOURCE__"></div>
+<div><label class="f" for="r-series">id série</label><input id="r-series" type="text" value="__DEFAULT_SERIES__"></div>
+<div><label class="f" for="r-lang">langue cible (fr, en…)</label><input id="r-lang" type="text" value="__DEFAULT_LANG__"></div>
+<div><label class="f" for="r-srclang">langue d'entrée du chapitre (en, ja, fr…)</label><input id="r-srclang" type="text" value="__DEFAULT_SRCLANG__"></div>
 <div><label class="f" for="r-group">groupe optionnel (mangadex uniquement)</label><input id="r-group" type="text"></div>
 <div><label class="f" for="r-max">max chapitres (optionnel)</label><input id="r-max" type="text"></div>
 <div><label class="f" for="r-ocrengine">moteur OCR</label><select id="r-ocrengine"><option value="">par défaut (env)</option><option value="paddle">paddle (PP-OCRv6)</option><option value="tesseract">tesseract</option></select></div>
@@ -240,8 +279,8 @@ blockquote{margin:.3rem 0;padding:.25rem .7rem;border-left:3px solid var(--indig
 <label class="switch"><input type="checkbox" id="r-mock"><span class="track"></span>mock-llm (démo hors ligne)</label>
 <label class="switch"><input type="checkbox" id="r-force"><span class="track"></span>forcer l'export même si la QA échoue</label>
 <label class="switch"><input type="checkbox" id="r-ocr" checked><span class="track"></span>OCR + remplacement du texte dans les images</label>
-<label class="switch"><input type="checkbox" id="r-zip" checked><span class="track"></span>zip export-&lt;date&gt;-&lt;heure&gt;-&lt;minutes&gt;.zip à la fin (images + PDF + metadata/, le reste de out/ est supprimé)</label>
-<label class="switch"><input type="checkbox" id="r-zip-clean"><span class="track"></span>aussi embarquer cleaned/ dans le zip (images nettoyées avant retypographie — debug inpainting)</label>
+<label class="switch"><input type="checkbox" id="r-zip" __ZIP_ATTR__><span class="track"></span>zip export-&lt;date&gt;-&lt;heure&gt;-&lt;minutes&gt;.zip à la fin (images + PDF + metadata/, le reste de out/ est supprimé)</label>
+<label class="switch"><input type="checkbox" id="r-zip-clean" __ZIPCLEAN_ATTR__><span class="track"></span>aussi embarquer cleaned/ dans le zip (images nettoyées avant retypographie — debug inpainting)</label>
 </div>
 <button class="btn" onclick="runPipeline()">Lancer le pipeline</button>
 </div>
@@ -253,6 +292,7 @@ blockquote{margin:.3rem 0;padding:.25rem .7rem;border-left:3px solid var(--indig
 </div>
 <script>
 const enc = encodeURIComponent;
+  __DEFAULTS_JS__
 let TOKEN = localStorage.getItem('scalper_token') || '';
 function showLogin(){ document.getElementById('login').style.display='block'; document.getElementById('app').style.display='none'; }
 function hideLogin(){ document.getElementById('login').style.display='none'; document.getElementById('app').style.display='block'; }
@@ -383,6 +423,29 @@ async function go(){
 """
 
 
+def _index_html() -> str:
+    """INDEX_HTML avec les valeurs par défaut env pré-remplies (source, série, langues,
+    moteurs, zip)."""
+    def esc(v: str | None) -> str:
+        return html.escape(v or "", quote=True)
+
+    defaults_js = (
+        "document.getElementById('r-ocrengine').value="
+        + json.dumps(os.environ.get("SCALPER_DEFAULT_OCR_ENGINE") or "") + ";"
+        + "document.getElementById('r-inpaint').value="
+        + json.dumps(os.environ.get("SCALPER_DEFAULT_INPAINT_ENGINE") or "") + ";"
+    )
+    page = INDEX_HTML
+    page = page.replace("__DEFAULT_SOURCE__", esc(os.environ.get("SCALPER_DEFAULT_SOURCE") or "demo"))
+    page = page.replace("__DEFAULT_SERIES__", esc(os.environ.get("SCALPER_DEFAULT_SERIES") or "demo-1"))
+    page = page.replace("__DEFAULT_LANG__", esc(os.environ.get("SCALPER_DEFAULT_LANG") or "fr"))
+    page = page.replace("__DEFAULT_SRCLANG__", esc(os.environ.get("SCALPER_DEFAULT_SRC_LANG") or ""))
+    page = page.replace("__ZIP_ATTR__", "checked" if _env_bool("SCALPER_ZIP_EXPORT", True) else "")
+    page = page.replace("__ZIPCLEAN_ATTR__", "checked" if _env_bool("SCALPER_ZIP_INCLUDE_CLEAN", False) else "")
+    page = page.replace("__DEFAULTS_JS__", defaults_js)
+    return page
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args) -> None:  # silence les logs par requête
         pass
@@ -443,7 +506,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         u = urlparse(self.path)
         if u.path == "/":
-            return self._html(200, INDEX_HTML)
+            return self._html(200, _index_html())
         if u.path == "/healthz":
             return self._json(200, {"status": "ok"})
         if u.path == "/setup":
@@ -518,21 +581,8 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("background"):
                 job_id = _start_job(body)
                 return self._json(202, {"job": job_id, "status": "running"})
-            summary = pipeline.run_pipeline(
-                body["source"],
-                body["series"],
-                body["lang"],
-                out_root=body.get("out", "out"),
-                mock_llm=bool(body.get("mock_llm", False)),
-                max_chapters=body.get("max_chapters"),
-                group=body.get("group"),
-                with_ocr=bool(body.get("with_ocr", True)),
-                force=bool(body.get("force", False)),
-                src_lang=body.get("src_lang"),
-                inpaint_engine=body.get("inpaint_engine"),
-                ocr_engine=body.get("ocr_engine"),
-                zip_export=bool(body.get("zip_export", False)),
-            )
+            pos, kw = _run_kwargs(body)
+            summary = pipeline.run_pipeline(*pos, **kw)
         except KeyError as e:
             return self._json(400, {"error": f"champ requis manquant: {e}"})
         except Exception as e:

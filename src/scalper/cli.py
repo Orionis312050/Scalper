@@ -20,6 +20,13 @@ from .sources import get_adapter
 from .translator import FakeLLM, MistralChatClient, load_glossary, save_glossary, translate_chapter
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _print(data: dict) -> None:
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
@@ -102,9 +109,12 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--port", type=int, default=8000)
 
     c = sub.add_parser("run", help="pipeline complet end-to-end")
-    c.add_argument("--source", required=True)
-    c.add_argument("--series", required=True)
-    c.add_argument("--lang", required=True)
+    c.add_argument("--source", default=os.environ.get("SCALPER_DEFAULT_SOURCE"),
+                   help="source (défaut: SCALPER_DEFAULT_SOURCE)")
+    c.add_argument("--series", default=os.environ.get("SCALPER_DEFAULT_SERIES"),
+                   help="id série (défaut: SCALPER_DEFAULT_SERIES)")
+    c.add_argument("--lang", default=os.environ.get("SCALPER_DEFAULT_LANG"),
+                   help="langue cible (défaut: SCALPER_DEFAULT_LANG)")
     c.add_argument("--group", default=None, help="filtrer par groupe (mangadex)")
     c.add_argument("--out", default="out")
     c.add_argument("--max-chapters", type=int, default=None)
@@ -115,12 +125,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="moteur OCR (défaut: SCALPER_OCR_ENGINE ou tesseract)")
     c.add_argument("--inpaint-engine", choices=["simple", "lama", "auto"], default=None,
                    help="moteur d'inpainting pour la suppression du texte (défaut: SCALPER_INPAINT_ENGINE ou auto)")
-    c.add_argument("--zip-export", action="store_true",
+    c.add_argument("--zip-export", action=argparse.BooleanOptionalAction, default=_env_bool("SCALPER_ZIP_EXPORT", False),
                    help="à la fin du run : zip export-<date>-<heure>-<minutes>.zip dans out/ (images + PDF + metadata/ par chapitre), puis supprime le reste de out/")
-    c.add_argument("--zip-include-clean", action="store_true",
+    c.add_argument("--zip-include-clean", action=argparse.BooleanOptionalAction, default=_env_bool("SCALPER_ZIP_INCLUDE_CLEAN", False),
                    help="avec --zip-export : embarque aussi cleaned/<chapitre>/ (images nettoyées, debug inpainting) dans le zip")
     c.add_argument("--force", action="store_true", help="exporte même si la QA échoue (bypass vérification)")
-    c.add_argument("--src-lang", default=None, help="langue d'entrée du chapitre (en, ja, fr…) : enregistrée dans meta.json et utilisée pour l'OCR")
+    c.add_argument("--src-lang", default=os.environ.get("SCALPER_DEFAULT_SRC_LANG"),
+                   help="langue d'entrée du chapitre (défaut: SCALPER_DEFAULT_SRC_LANG ; enregistrée dans meta.json et utilisée pour l'OCR)")
 
     args = p.parse_args(argv)
 
@@ -238,6 +249,9 @@ def main(argv: list[str] | None = None) -> int:
         serve(args.host, args.port)
         return 0
     if args.cmd == "run":
+        for _name in ("source", "series", "lang"):
+            if not getattr(args, _name):
+                p.error(f"--{_name} requis (ou variable d'env SCALPER_DEFAULT_{_name.upper()})")
         if getattr(args, "ocr_engine", None):
             os.environ["SCALPER_OCR_ENGINE"] = args.ocr_engine
         if getattr(args, "inpaint_engine", None):

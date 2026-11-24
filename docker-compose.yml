@@ -20,6 +20,14 @@ services:
       - MISTRAL_MODEL=mistral-small-latest
       - SCALPER_OCR_ENGINE=paddle
       - SCALPER_INPAINT_ENGINE=lama
+      # valeurs par défaut du run (pré-remplies dans l'UI, utilisées par POST /run et la CLI) :
+      - SCALPER_DEFAULT_SOURCE=mangadex
+      - SCALPER_DEFAULT_SERIES=6e769716-df1e-4d66-89cc-32f3b46e17dc
+      - SCALPER_DEFAULT_LANG=fr
+      - SCALPER_DEFAULT_SRC_LANG=en
+      - SCALPER_PADDLE_OCR_TIER=medium   # PP-OCRv6_medium (défaut)
+      - SCALPER_ZIP_EXPORT=true
+      - SCALPER_ZIP_INCLUDE_CLEAN=true   # embarque cleaned/ dans le zip d'export
     volumes:
       - /DATA/AppData/scalper/data:/app/data
       - /DATA/AppData/scalper/out:/app/out

@@ -104,13 +104,30 @@ def run_pipeline(
     save_glossary(glossary_path, glossary)
     summary: dict[str, Any] = {"status": "done", "source": source_id, "series": series_id, "lang": lang, "chapters": results}
     if zip_export:
-        from .packager import zip_run_export
-
         chapter_ids = [r["chapter"]["id"] for r in results if "chapter" in r]
-        _fire("zip")
-        summary["export_zip"] = str(zip_run_export(out_root, source_id, series_id, lang, chapter_ids,
-                                                   include_clean=zip_include_clean))
-        _fire("clean")
+        from .drive import is_dev
+
+        if is_dev():
+            # Environnement de dev (SCALPER_ENV=dev) : pas de zip, un dossier horodaté
+            # out/export-<AAAA-MM-JJ-HH-MM>/ (le reste de out/ est conservé), uploadé
+            # vers Google Drive si GOOGLE_DRIVE_ACCESS_TOKEN est renseigné.
+            from .drive import folder_run_export, upload_folder_to_drive
+
+            _fire("drive-export")
+            folder = folder_run_export(out_root, source_id, series_id, lang, chapter_ids,
+                                       include_clean=zip_include_clean)
+            summary["export_folder"] = str(folder)
+            try:
+                summary["export_drive"] = upload_folder_to_drive(folder)
+            except Exception as e:
+                summary["export_drive"] = f"skipped: {e}"
+        else:
+            from .packager import zip_run_export
+
+            _fire("zip")
+            summary["export_zip"] = str(zip_run_export(out_root, source_id, series_id, lang, chapter_ids,
+                                                       include_clean=zip_include_clean))
+            _fire("clean")
     return summary
 
 

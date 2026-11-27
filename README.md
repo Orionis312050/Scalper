@@ -112,6 +112,25 @@ Puis **tout le reste du dossier `out/` est supprimé** (zip excepté — y compr
 `glossary.json` : pas de reprise après un export zippé). `scalper pack --no-clean` garde le reste.
 Le chemin du zip est renvoyé dans le résumé du run (`export_zip`).
 
+### Export dossier + Google Drive (dev uniquement)
+
+En environnement de **dev** (`SCALPER_ENV=dev`), quand un export zip est demandé
+(`--zip-export` / `SCALPER_ZIP_EXPORT=true` / `POST /run` / `scalper pack`), Scalper ne zippe
+**pas** : il crée à la place un **dossier horodaté** `out/export-<AAAA-MM-JJ-HH-MM>/`
+(date + heure/minutes locales) contenant le contenu de l'export — `export/<chapitre>/`
+(md/json/html/images re-traduites), `images/<chapitre>/` + `pdf/<chapitre>.pdf`,
+`metadata/<chapitre>/*.json`, `cleaned/<chapitre>/` si demandé — et **conserve le reste de
+`out/`** (pas de clean en dev, pour débugger). Le chemin est renvoyé dans le résumé du run
+(`export_folder`).
+
+Si `GOOGLE_DRIVE_ACCESS_TOKEN` est renseigné (token OAuth, scope `drive.file`), le dossier est
+de plus créé dans **Google Drive** sous le même nom `export-<AAAA-MM-JJ-HH-MM>` (parent
+`GOOGLE_DRIVE_PARENT_ID`, racine sinon) avec tout le contenu uploadé ; le résumé du run
+contient alors `export_drive` (`folder_id`, `folder_name`, `files`). Sans token, l'upload est
+ignoré (`export_drive: "skipped: ..."`) : le dossier local suffit à regarder le résultat.
+
+Hors dev (`SCALPER_ENV` absent ou `prod`), le comportement est inchangé : zip uniquement.
+
 Pendant l'inpainting LaMa, chaque page loggue un diagnostic :
 `[scalper][lama] image 690x10000 : 28/28 régions inpaintées, couverture masque 20.9% du crop (entrée modèle 21.5%), delta |pred-input| moyen 25.5, repli fill 0, 68.2s`
 - « masque vide » / couverture 0 % = coordonnées OCR hors image (voir `_normalize_polys`) ;

@@ -122,6 +122,34 @@ class TestDriveUpload(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     upload_folder_to_drive(tmp)
 
+    def test_parent_name_lookup(self):
+        from scalper import drive
+
+        calls = []
+
+        def fake_request(url, token, method="GET", body=None, content_type=None, timeout=60):
+            calls.append((method, url, body))
+            if "q=" in url:  # recherche du dossier parent par nom
+                return {"files": [{"id": "FOLDER_SCALPER", "name": "Scalper"}]}
+            if method == "POST" and "uploadType" not in url:  # création du dossier
+                return {"id": "NEW_FOLDER"}
+            return {"id": "FILE_ID"}  # upload de fichier
+
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "export-2026-11-27-09-01"
+            (d / "export" / "ch1").mkdir(parents=True)
+            (d / "export" / "ch1" / "ch1.md").write_text("# ch1\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"GOOGLE_DRIVE_ACCESS_TOKEN": "tok",
+                                              "GOOGLE_DRIVE_PARENT_ID": "",
+                                              "GOOGLE_DRIVE_PARENT_NAME": "Scalper"}):
+                with mock.patch.object(drive, "_drive_request", side_effect=fake_request):
+                    res = upload_folder_to_drive(d)
+        self.assertEqual(res["folder_id"], "NEW_FOLDER")
+        self.assertEqual(res["folder_name"], "export-2026-11-27-09-01")
+        self.assertEqual(res["files"], ["export/ch1/ch1.md"])
+        create = [c for c in calls if c[0] == "POST" and "uploadType" not in c[1]][0]
+        self.assertIn(b'"parents": ["FOLDER_SCALPER"]', create[2])  # créé dans le dossier « Scalper »
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -125,9 +125,10 @@ En environnement de **dev** (`SCALPER_ENV=dev`), quand un export zip est demand�
 
 Si `GOOGLE_DRIVE_ACCESS_TOKEN` est renseigné (token OAuth, scope `drive.file`), le dossier est
 de plus créé dans **Google Drive** sous le même nom `export-<AAAA-MM-JJ-HH-MM>` (parent
-`GOOGLE_DRIVE_PARENT_ID`, racine sinon) avec tout le contenu uploadé ; le résumé du run
-contient alors `export_drive` (`folder_id`, `folder_name`, `files`). Sans token, l'upload est
-ignoré (`export_drive: "skipped: ..."`) : le dossier local suffit à regarder le résultat.
+`GOOGLE_DRIVE_PARENT_ID`, ou `GOOGLE_DRIVE_PARENT_NAME=Scalper` résolu en id par nom, racine
+sinon) avec tout le contenu uploadé ; le résumé du run contient alors `export_drive`
+(`folder_id`, `folder_name`, `files`). Sans token, l'upload est ignoré
+(`export_drive: "skipped: ..."`) : le dossier local suffit à regarder le résultat.
 
 Hors dev (`SCALPER_ENV` absent ou `prod`), le comportement est inchangé : zip uniquement.
 

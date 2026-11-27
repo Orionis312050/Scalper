@@ -110,6 +110,16 @@ def _drive_request(url: str, token: str, method: str = "GET", body: bytes | None
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _drive_find_folder_id(name: str, token: str, timeout: int = 60) -> str | None:
+    """Retourne l'id du premier dossier Drive nommé `name` (non dans la corbeille), ou None."""
+    import urllib.parse
+
+    q = urllib.parse.quote(f"mimeType='{FOLDER_MIME}' and name='{name}' and trashed=false")
+    data = _drive_request(f"{DRIVE_API}?q={q}&fields=files(id,name)&pageSize=1", token, timeout=timeout)
+    files = data.get("files") or []
+    return files[0]["id"] if files else None
+
+
 def _drive_create_folder(name: str, parent: str, token: str, timeout: int) -> str:
     payload = json.dumps({"name": name, "mimeType": FOLDER_MIME, "parents": [parent]}).encode("utf-8")
     folder = _drive_request(DRIVE_API, token, method="POST", body=payload,
@@ -158,7 +168,11 @@ def upload_folder_to_drive(
             "GOOGLE_DRIVE_ACCESS_TOKEN manquant : en dev, renseigne un token OAuth Google Drive "
             "(scope drive.file) pour uploader l'export ; sinon le dossier local suffit."
         )
-    parent = parent_id or os.environ.get("GOOGLE_DRIVE_PARENT_ID") or "root"
+    parent = parent_id or os.environ.get("GOOGLE_DRIVE_PARENT_ID")
+    if not parent:
+        # dossier parent par nom (ex. GOOGLE_DRIVE_PARENT_NAME=Scalper), sinon racine
+        parent_name = os.environ.get("GOOGLE_DRIVE_PARENT_NAME")
+        parent = (_drive_find_folder_id(parent_name, token, timeout) if parent_name else None) or "root"
     local_dir = Path(local_dir)
     folder_id = _drive_create_folder(local_dir.name, parent, token, timeout)
     folder_ids = {"": folder_id}

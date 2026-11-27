@@ -236,9 +236,24 @@ def main(argv: list[str] | None = None) -> int:
         _print({"status": "ok", "images": outputs})
         return 0
     if args.cmd == "pack":
+        ids = [c.strip() for c in args.chapters.split(",") if c.strip()] if args.chapters else None
+        from .drive import is_dev
+
+        if is_dev():
+            # dev (SCALPER_ENV=dev) : dossier horodaté au lieu du zip, reste de out/ conservé
+            from .drive import folder_run_export, upload_folder_to_drive
+
+            folder = folder_run_export(args.out, args.source, args.series, args.lang, chapter_ids=ids,
+                                       include_clean=args.with_clean)
+            result: dict = {"status": "ok", "folder": str(folder), "clean": False, "with_clean": args.with_clean}
+            try:
+                result["drive"] = upload_folder_to_drive(folder)
+            except Exception as e:
+                result["drive"] = f"skipped: {e}"
+            _print(result)
+            return 0
         from .packager import zip_run_export
 
-        ids = [c.strip() for c in args.chapters.split(",") if c.strip()] if args.chapters else None
         zip_path = zip_run_export(args.out, args.source, args.series, args.lang, chapter_ids=ids,
                                   clean=not args.no_clean, include_clean=args.with_clean)
         _print({"status": "ok", "zip": str(zip_path), "clean": not args.no_clean, "with_clean": args.with_clean})
